@@ -45,7 +45,7 @@ class Config():
         # Redis 数据库编号
         self.REDIS_DB = self.config.getint('redis', 'db', fallback=0)
         # 日志文件路径
-        self.LOG_FILE = self.config.get('logger', 'log_file', fallback='integrated_qa_system/logs/app.log')
+        self.LOG_FILE = self.config.get('logger', 'log_file', fallback='logs/app.log')
 
 
 if __name__ == '__main__':

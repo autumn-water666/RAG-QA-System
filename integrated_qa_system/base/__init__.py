@@ -4,6 +4,7 @@ import sys
 module_dir = os.path.dirname(os.path.abspath(__file__))
 # print(f'module_dir--》{module_dir}')
 project_root = os.path.dirname(module_dir)
+
 if module_dir not in sys.path:
     sys.path.insert(0, module_dir)
 
@@ -13,3 +14,6 @@ if project_root not in sys.path:
 # print(sys.path)
 from config import Config
 from logger import logger
+
+
+__all__ = ["Config", "logger"]

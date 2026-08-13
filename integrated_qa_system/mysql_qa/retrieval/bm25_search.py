@@ -71,6 +71,60 @@ class BM25Search:
         self.bm25 = BM25Okapi(self.questions)
         # 记录 BM25 初始化成功
         self.logger.info("BM25 模型初始化完成")
+
+    def _softmax(self, scores):
+        # 计算 Softmax 分数
+        exp_scores = np.exp(scores - np.max(scores))
+        # 返回归一化分数
+        return exp_scores / exp_scores.sum()
+
+    def search(self, query, threshold=0.85):
+        # 搜索查询
+        if not query or not isinstance(query, str):
+            # 记录无效查询
+            self.logger.error("无效查询")
+            # 返回 None 和 False
+            return None, False
+        # 检查 Redis 缓存
+        cached_answer = self.redis_client.get_answer(query)
+        if cached_answer:
+            # 返回缓存答案
+            return cached_answer, False
+        try:
+            # 分词查询
+            query_tokens = preprocess_text(query)
+            # 计算 BM25 分数
+            scores = self.bm25.get_scores(query_tokens)
+            # 计算 Softmax 分数
+            softmax_scores = self._softmax(scores)
+            # 获取最高分索引
+            best_idx = softmax_scores.argmax()
+            # 获取最高分
+            best_score = softmax_scores[best_idx]
+            # 检查是否超过阈值
+            if best_score >= threshold:
+                # 获取原始问题
+                original_question = self.original_questions[best_idx]
+                # 获取答案
+                answer = self.mysql_client.fetch_answer(original_question)
+                if answer:
+                    # 缓存答案
+                    self.redis_client.set_data(f"answer:{query}", answer)
+                    # 记录搜索成功
+                    self.logger.info(f"搜索成功，Softmax 相似度: {best_score:.3f}")
+                    # 返回答案和 False
+                    return answer, False
+            # 记录无可靠答案
+            self.logger.info(f"未找到可靠答案，最高 Softmax 相似度: {best_score:.3f}")
+            # 返回 None 和 True
+            return None, True
+        except Exception as e:
+            # 记录搜索失败
+            self.logger.error(f"搜索失败: {e}")
+            # 返回 None 和 True
+            return None, True
+
+
 if __name__ == "__main__":
     redis_client = RedisClient()
     mysql_client = MySQLClient()

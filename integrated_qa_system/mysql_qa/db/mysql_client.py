@@ -11,7 +11,7 @@ module_dir = os.path.dirname(current_dir)
 # print(f'module_dir--》{module_dir}')
 project_root = os.path.dirname(module_dir)
 sys.path.insert(0, project_root)
-from integrated_qa_system.base import Config, logger
+from base import Config, logger
 
 class MySQLClient:
     def __init__(self):
@@ -113,23 +113,9 @@ class MySQLClient:
 if __name__ == '__main__':
     mysql_client = MySQLClient()
     # mysql_client.create_table()
-    # mysql_client.insert_data(csv_path='../data/JP学科知识问答.csv')
+    # mysql_client.insert_data(csv_path='../data/数据.csv')
     # results = mysql_client.fetch_questions()
     # print(f'results--》{results}')
     a = mysql_client.fetch_answer(question="在磁盘中无法新建文本文档")
-    print(f'a--》{a}')
+    # print(f'a--》{a}')
     mysql_client.close()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
