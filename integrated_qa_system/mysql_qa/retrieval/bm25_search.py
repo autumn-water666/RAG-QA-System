@@ -129,5 +129,11 @@ if __name__ == "__main__":
     redis_client = RedisClient()
     mysql_client = MySQLClient()
     bm25_search = BM25Search(redis_client, mysql_client)
+    # 测试搜索
+    query = "两个人开发项目,我push到github上后\n别人直接pull可以看到我的代码吗\n为什么我要pull request 他才能看到我提交的代"
+    answer, is_new = bm25_search.search(query)
+    print(f"查询: {query}")
+    print(f"答案: {answer}")
+    print(f"是否新答案: {is_new}")
 
 
