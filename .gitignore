@@ -1,3 +1,48 @@
-/config.ini
-/integrated_qa_system/rag_qa/bge-reranker-large/
+# Python virtual environment
+.venv/
+venv/
 
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+
+# Logs
+logs/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Environment variables
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Model weights (large binary files)
+*.bin
+*.pt
+*.pth
+*.safetensors
+*.ckpt
+
+# Cache marker
+CACHEDIR.TAG
+
+# Config files (containing secrets)
+/config.ini
+integrated_qa_system/config.ini
+
+# Large model directories
+/integrated_qa_system/rag_qa/bge-reranker-large/
