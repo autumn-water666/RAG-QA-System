@@ -47,6 +47,11 @@ class Config():
         # 日志文件路径
         self.LOG_FILE = self.config.get('logger', 'log_file', fallback='logs/app.log')
 
+        # 文本切分配置
+        self.PARENT_CHUNK_SIZE = self.config.getint('chunking', 'parent_chunk_size', fallback=1500)
+        self.CHILD_CHUNK_SIZE = self.config.getint('chunking', 'child_chunk_size', fallback=500)
+        self.CHUNK_OVERLAP = self.config.getint('chunking', 'chunk_overlap', fallback=200)
+
 
 if __name__ == '__main__':
     config_file = 'integrated_qa_system/config.ini'

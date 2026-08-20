@@ -497,6 +497,21 @@ wheels = [
 ]
 
 [[package]]
+name = "firecrawl-anydoc"
+version = "0.2.0"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/3c/50/6d4dd6c2308934030338fa58b74004b93bf2ed80a8766ee09f5f4e797846/firecrawl_anydoc-0.2.0.tar.gz", hash = "sha256:de7e79449220427d5e15177a8721c37deddecb8e4124dc070dfa520177b4d9b1" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/8b/20/0a63669df3c2ce2f4d09fd27f000ceb19ab8d3473de8e0c64038006e061a/firecrawl_anydoc-0.2.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:84dedb692ec0786c08df176f61724bb65c500d6fc2e5d5a15b72852b8a36690c" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/ae/18/2c7dc956d79aa496b5a646e8256918777011024360ea2847d2730a03bb17/firecrawl_anydoc-0.2.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:3330949f21f3f42c304e83cdecb921d7fa90999ff204ba419c2cdea8cd73b2c7" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/88/23/95686d5a62a69e439718aca6bc060961fb02d1d75058b74272ce8edc9523/firecrawl_anydoc-0.2.0-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:a98255b510310b9b50be90b7e12d72528c02f3764df00522a3d6b76d22dc3ed8" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/c8/42/c0d50182ea71c7bc11afc5193f914f874df45b141518a37125a46e285654/firecrawl_anydoc-0.2.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:97dd2624577e986a149af43a007d8f7b2d4da3c5012f304bd4aa33a7c543b271" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/18/f1/d4fbfb180a49bbc094e082d015ea9b0b97cc3496b418bf3034eb5fafd069/firecrawl_anydoc-0.2.0-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:4e10ee371d453b163c1dae4057d190184df17528db32b805095b9bfe012818a8" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/aa/f3/f72dc71062c064dc6ceab1f94ad95da2a77b210c3990ed5080bd1684396a/firecrawl_anydoc-0.2.0-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:603940ac5418cadb1d10b96e17019ce1f8505c212d17367f227fad32d1b7714b" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/b8/67/898ad44b23cd23f2f571ee2442ddd9ca66adb50d978c199f9c4bb1089b40/firecrawl_anydoc-0.2.0-cp310-abi3-win_amd64.whl", hash = "sha256:330620257114ce0953f2ea9a0c238499bbc819d4143f504fa967171c99d5ad95" },
+]
+
+[[package]]
 name = "flagembedding"
 version = "1.3.4"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
@@ -2092,6 +2107,7 @@ dependencies = [
     { name = "ffmpy" },
     { name = "filelock" },
     { name = "filetype" },
+    { name = "firecrawl-anydoc" },
     { name = "flagembedding" },
     { name = "flatbuffers" },
     { name = "frozenlist" },
@@ -2274,6 +2290,7 @@ requires-dist = [
     { name = "ffmpy", specifier = "==0.5.0" },
     { name = "filelock", specifier = "==3.18.0" },
     { name = "filetype", specifier = "==1.2.0" },
+    { name = "firecrawl-anydoc", specifier = ">=0.2.0" },
     { name = "flagembedding", specifier = "==1.3.4" },
     { name = "flatbuffers", specifier = "==25.2.10" },
     { name = "frozenlist", specifier = "==1.6.0" },

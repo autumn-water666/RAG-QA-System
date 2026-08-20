@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__codegraph__codegraph_explore",
+      "Bash(uv pip *)",
+      "Bash(uv add *)",
+      "Bash(python -c \"import anydoc; print\\(dir\\(anydoc\\)\\)\")",
+      "Bash(python -c \"import anydoc; help\\(anydoc\\)\")",
+      "WebSearch",
+      "Bash(python -c \"from markitdown import MarkItDown; m = MarkItDown\\(\\); print\\(dir\\(m\\)\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(ls \"E:\\\\IDM-download\\\\anydoc-main\")",
+      "Read(//e/IDM-download/anydoc-main/**)",
+      "Bash(uv remove *)",
+      "Bash(python -c \"import anydoc; print\\(anydoc.to_markdown.__doc__\\)\")"
+    ]
+  }
+}
