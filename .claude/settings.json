@@ -12,7 +12,16 @@
       "Bash(ls \"E:\\\\IDM-download\\\\anydoc-main\")",
       "Read(//e/IDM-download/anydoc-main/**)",
       "Bash(uv remove *)",
-      "Bash(python -c \"import anydoc; print\\(anydoc.to_markdown.__doc__\\)\")"
+      "Bash(python -c \"import anydoc; print\\(anydoc.to_markdown.__doc__\\)\")",
+      "Bash(xargs -0 -n1 '-I{}' sh -c 'size=$\\(wc -c < \"{}\" 2>/dev/null\\); if [ \"$size\" -gt 1048576 ]; then echo \"$size {}\"; fi')",
+      "Bash(git filter-branch *)",
+      "Bash(git stash *)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force --index-filter 'git rm --cached --ignore-unmatch integrated_qa_system/rag_qa/nlp_bert_document-segmentation_chinese-base/pytorch_model.bin' --prune-empty -- --all)",
+      "Bash(git update-index *)",
+      "Bash(git checkout *)",
+      "Bash(rm -rf .git/refs/original/)",
+      "Bash(git reflog *)",
+      "Bash(git gc *)"
     ]
   }
 }
