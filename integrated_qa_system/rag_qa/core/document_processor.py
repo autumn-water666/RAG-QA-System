@@ -19,6 +19,7 @@ from langchain_community.document_loaders import TextLoader
 from langchain.text_splitter import MarkdownTextSplitter
 from datetime import datetime
 import sys
+from langchain_core.documents import Document
 
 # 路径设置：将 rag_qa 和项目根目录加入 sys.path，确保模块导入正常
 current_dir = os.path.dirname(os.path.abspath(__file__))  # core/ 目录
@@ -65,7 +66,7 @@ document_loaders = {
 }
 
 
-def load_documents_from_directory(directory_path):
+def load_documents_from_directory(directory_path) -> list[Document]:
     """从指定目录递归加载所有支持格式的文档，并为每个文档添加元数据。
 
     流程：
@@ -96,8 +97,10 @@ def load_documents_from_directory(directory_path):
             if file_extension in supported_extensions:
                 try:
                     loader_class = document_loaders[file_extension]
-                    # .txt 文件需要指定编码，其他格式由 Loader 自行处理
-                    if file_extension == ".txt":
+                    # .txt 和 .md 是纯文本，须显式指定 UTF-8 编码。
+                    # 否则 TextLoader 自动检测会落到系统默认编码（Windows 下是 GBK），
+                    # 遇到 UTF-8 编码的中文文件会抛 UnicodeDecodeError。
+                    if file_extension in (".txt", ".md"):
                         loader = loader_class(file_path, encoding="utf-8")
                     else:
                         loader = loader_class(file_path)
@@ -121,7 +124,7 @@ def load_documents_from_directory(directory_path):
 
 def process_documents(directory_path, parent_chunk_size=conf.PARENT_CHUNK_SIZE,
                      child_chunk_size=conf.CHILD_CHUNK_SIZE,
-                     chunk_overlap=conf.CHUNK_OVERLAP):
+                     chunk_overlap=conf.CHUNK_OVERLAP)  -> list[Document]:
     """处理文档并进行分层切分，返回子块结果。
 
     采用父子分层切分策略：
@@ -191,8 +194,8 @@ def process_documents(directory_path, parent_chunk_size=conf.PARENT_CHUNK_SIZE,
         for j, parent_doc in enumerate(parent_docs):
             # 为父块生成唯一 ID，格式：doc_0_parent_1
             parent_id = f"doc_{i}_parent_{j}"
-            parent_doc.metadata["parent_id"] = parent_id
-            parent_doc.metadata["parent_content"] = parent_doc.page_content
+            # parent_doc.metadata["parent_id"] = parent_id
+            # parent_doc.metadata["parent_content"] = parent_doc.page_content
 
             # 再用子块切分器将每个父块切分为小粒度的子块
             sub_chunks = child_splitter_to_use.split_documents([parent_doc])

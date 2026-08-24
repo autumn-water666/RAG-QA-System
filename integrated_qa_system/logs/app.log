@@ -1522,3 +1522,75 @@
 2026-08-17 20:59:56,856 - EduRAG - INFO - SQL中未找到答案, 需要调用RAG系统
 2026-08-17 20:59:56,856 - EduRAG - INFO - 查询处理耗时 0.00秒
 2026-08-17 21:00:04,462 - EduRAG - INFO - MySQL 连接已关闭
+2026-08-24 20:42:09,703 - EduRAG - INFO - 使用设置：cpu
+2026-08-24 20:46:38,638 - EduRAG - INFO - 使用设置：cpu
+2026-08-24 21:11:55,474 - EduRAG - INFO - 使用设置：cpu
+2026-08-24 21:12:06,652 - EduRAG - INFO - 已创建集合 edu_rag
+2026-08-24 21:12:06,662 - EduRAG - INFO - 已加载集合 edu_rag
+2026-08-24 21:12:51,965 - EduRAG - INFO - 使用设置：cpu
+2026-08-24 21:12:59,037 - EduRAG - INFO - 已加载集合 edu_rag
+2026-08-24 21:12:59,081 - EduRAG - INFO - 加载的文档数量: 0
+2026-08-24 21:12:59,081 - EduRAG - INFO - 子块数量: 0
+2026-08-24 21:14:49,380 - EduRAG - ERROR - 加载文件 integrated_qa_system/rag_qa/data/ai_data\LLM基础知识.pdf 失败: malformed document: couldn't parse input: invalid file trailer
+2026-08-24 21:14:49,382 - EduRAG - ERROR - 加载文件 integrated_qa_system/rag_qa/data/ai_data\人工智能就业课课程大纲.md 失败: Error loading integrated_qa_system/rag_qa/data/ai_data\人工智能就业课课程大纲.md
+2026-08-24 21:17:44,080 - EduRAG - ERROR - 加载文件 integrated_qa_system/rag_qa/data/ai_data\LLM基础知识.pdf 失败: malformed document: couldn't parse input: invalid file trailer
+2026-08-24 21:17:44,081 - EduRAG - ERROR - 加载文件 integrated_qa_system/rag_qa/data/ai_data\人工智能就业课课程大纲.md 失败: Error loading integrated_qa_system/rag_qa/data/ai_data\人工智能就业课课程大纲.md
+2026-08-24 21:19:19,525 - EduRAG - INFO - 成功加载文件: integrated_qa_system/rag_qa/data/ai_data\LLM基础知识.pdf
+2026-08-24 21:19:19,525 - EduRAG - WARNING - 不支持的文件类型: integrated_qa_system/rag_qa/data/ai_data\LLM基础知识_truncated.bak
+2026-08-24 21:19:19,526 - EduRAG - INFO - 成功加载文件: integrated_qa_system/rag_qa/data/ai_data\人工智能就业课课程大纲.md
+2026-08-24 21:19:19,526 - EduRAG - INFO - 加载的文档数量: 2
+2026-08-24 21:19:19,526 - EduRAG - INFO - 处理文档: integrated_qa_system/rag_qa/data/ai_data\LLM基础知识.pdf, 使用切分器: ChineseRecursive
+2026-08-24 21:19:19,563 - EduRAG - INFO - 处理文档: integrated_qa_system/rag_qa/data/ai_data\人工智能就业课课程大纲.md, 使用切分器: Markdown
+2026-08-24 21:19:19,589 - EduRAG - INFO - 子块数量: 81
+2026-08-24 21:20:12,920 - EduRAG - INFO - 使用设置：cpu
+2026-08-24 21:20:21,825 - EduRAG - INFO - 已加载集合 edu_rag
+2026-08-24 21:20:21,911 - EduRAG - INFO - 加载的文档数量: 0
+2026-08-24 21:20:21,911 - EduRAG - INFO - 子块数量: 0
+2026-08-24 21:21:35,821 - EduRAG - INFO - 成功加载文件: integrated_qa_system/rag_qa/data/ai_data\LLM基础知识.pdf
+2026-08-24 21:21:35,823 - EduRAG - WARNING - 不支持的文件类型: integrated_qa_system/rag_qa/data/ai_data\LLM基础知识_truncated.bak
+2026-08-24 21:21:35,824 - EduRAG - INFO - 成功加载文件: integrated_qa_system/rag_qa/data/ai_data\人工智能就业课课程大纲.md
+2026-08-24 21:21:35,824 - EduRAG - INFO - 加载的文档数量: 2
+2026-08-24 21:21:35,824 - EduRAG - INFO - 处理文档: integrated_qa_system/rag_qa/data/ai_data\LLM基础知识.pdf, 使用切分器: ChineseRecursive
+2026-08-24 21:21:35,826 - EduRAG - INFO - 处理文档: integrated_qa_system/rag_qa/data/ai_data\人工智能就业课课程大纲.md, 使用切分器: Markdown
+2026-08-24 21:21:35,828 - EduRAG - INFO - 子块数量: 81
+2026-08-24 21:22:23,950 - EduRAG - INFO - 使用设置：cpu
+2026-08-24 21:22:31,078 - EduRAG - INFO - 已加载集合 edu_rag
+2026-08-24 21:22:31,117 - EduRAG - INFO - 加载的文档数量: 0
+2026-08-24 21:22:31,117 - EduRAG - INFO - 子块数量: 0
+2026-08-24 21:23:55,778 - EduRAG - INFO - 使用设置：cpu
+2026-08-24 21:24:05,997 - EduRAG - INFO - 已加载集合 edu_rag
+2026-08-24 21:24:06,233 - EduRAG - INFO - 成功加载文件: e:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\LLM基础知识.pdf
+2026-08-24 21:24:06,233 - EduRAG - WARNING - 不支持的文件类型: e:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\LLM基础知识_truncated.bak
+2026-08-24 21:24:06,234 - EduRAG - INFO - 成功加载文件: e:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\人工智能就业课课程大纲.md
+2026-08-24 21:24:06,234 - EduRAG - INFO - 加载的文档数量: 2
+2026-08-24 21:24:06,235 - EduRAG - INFO - 处理文档: e:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\LLM基础知识.pdf, 使用切分器: ChineseRecursive
+2026-08-24 21:24:06,238 - EduRAG - INFO - 处理文档: e:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\人工智能就业课课程大纲.md, 使用切分器: Markdown
+2026-08-24 21:24:06,240 - EduRAG - INFO - 子块数量: 81
+2026-08-24 21:27:54,560 - EduRAG - INFO - 使用设置：cpu
+2026-08-24 21:28:04,293 - EduRAG - INFO - 已加载集合 edu_rag
+2026-08-24 21:28:04,486 - EduRAG - INFO - 成功加载文件: E:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\LLM基础知识.pdf
+2026-08-24 21:28:04,486 - EduRAG - WARNING - 不支持的文件类型: E:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\LLM基础知识_truncated.bak
+2026-08-24 21:28:04,488 - EduRAG - INFO - 成功加载文件: E:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\人工智能就业课课程大纲.md
+2026-08-24 21:28:04,488 - EduRAG - INFO - 加载的文档数量: 2
+2026-08-24 21:28:04,488 - EduRAG - INFO - 处理文档: E:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\LLM基础知识.pdf, 使用切分器: ChineseRecursive
+2026-08-24 21:28:04,491 - EduRAG - INFO - 处理文档: E:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\人工智能就业课课程大纲.md, 使用切分器: Markdown
+2026-08-24 21:28:04,494 - EduRAG - INFO - 子块数量: 81
+2026-08-24 21:28:53,264 - EduRAG - INFO - 已插入或更新 81 个文档
+2026-08-24 21:30:57,455 - EduRAG - INFO - 使用设置：cpu
+2026-08-24 21:31:06,712 - EduRAG - INFO - 已加载集合 edu_rag
+2026-08-24 21:32:22,335 - EduRAG - INFO - 使用设置：cpu
+2026-08-24 21:32:29,285 - EduRAG - INFO - 已加载集合 edu_rag
+2026-08-24 21:32:29,436 - EduRAG - INFO - 成功加载文件: E:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\LLM基础知识.pdf
+2026-08-24 21:32:29,436 - EduRAG - WARNING - 不支持的文件类型: E:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\LLM基础知识_truncated.bak
+2026-08-24 21:32:29,437 - EduRAG - INFO - 成功加载文件: E:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\人工智能就业课课程大纲.md
+2026-08-24 21:32:29,437 - EduRAG - INFO - 加载的文档数量: 2
+2026-08-24 21:32:29,438 - EduRAG - INFO - 处理文档: E:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\LLM基础知识.pdf, 使用切分器: ChineseRecursive
+2026-08-24 21:32:29,440 - EduRAG - INFO - 处理文档: E:\ai-gent\RAG\integrated_qa_system\rag_qa\data\ai_data\人工智能就业课课程大纲.md, 使用切分器: Markdown
+2026-08-24 21:32:29,441 - EduRAG - INFO - 子块数量: 81
+2026-08-24 21:33:13,917 - EduRAG - INFO - 已插入或更新 81 个文档
+2026-08-24 21:34:42,747 - EduRAG - INFO - 使用设置：cpu
+2026-08-24 21:34:51,142 - EduRAG - INFO - 已加载集合 edu_rag
+2026-08-24 21:49:44,094 - EduRAG - INFO - 使用设置：cpu
+2026-08-24 21:49:53,051 - EduRAG - INFO - 已加载集合 edu_rag
+2026-08-24 21:51:04,474 - EduRAG - INFO - 使用设置：cpu
+2026-08-24 21:51:13,779 - EduRAG - INFO - 已加载集合 edu_rag

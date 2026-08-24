@@ -20,8 +20,8 @@ class Config():
         # config_file代表配置文件ini的路径
         # 1.创建配置文件解析器
         self.config = configparser.ConfigParser()
-        # 2. 读取配置文件
-        self.config.read(config_file)
+        # 2. 读取配置文件（config.ini 为 UTF-8 编码，须显式指定，否则 Windows 默认用 GBK 解码会报错）
+        self.config.read(config_file, encoding="utf-8")
         # 3. 获取相关的配置
         # 3.1 获取Mysql数据库的配置
         # mysql的主机地址
@@ -51,6 +51,22 @@ class Config():
         self.PARENT_CHUNK_SIZE = self.config.getint('chunking', 'parent_chunk_size', fallback=1500)
         self.CHILD_CHUNK_SIZE = self.config.getint('chunking', 'child_chunk_size', fallback=500)
         self.CHUNK_OVERLAP = self.config.getint('chunking', 'chunk_overlap', fallback=200)
+
+        # Milvus 向量数据库配置
+        # 向量数据库主机地址
+        self.MILVUS_HOST = self.config.get('milvus', 'host', fallback='localhost')
+        # 向量数据库端口
+        self.MILVUS_PORT = self.config.getint('milvus', 'port', fallback=19530)
+        # 向量数据库名称
+        self.MILVUS_DATABASE_NAME = self.config.get('milvus', 'database_name', fallback='default')
+        # 向量集合名称
+        self.MILVUS_COLLECTION_NAME = self.config.get('milvus', 'collection_name', fallback='edu_rag')
+
+        # 检索配置
+        # 混合检索时取回的候选子块数量
+        self.RETRIEVAL_K = self.config.getint('retrieval', 'retrieval_k', fallback=20)
+        # 重排序后返回的父块数量
+        self.CANDIDATE_M = self.config.getint('retrieval', 'candidate_m', fallback=5)
 
 
 if __name__ == '__main__':

@@ -101,7 +101,7 @@ pydantic-settings==2.9.1
 pydantic_core==2.33.1
 pydub==0.25.1
 Pygments==2.19.1
-pymilvus==2.5.4
+pymilvus==2.6.17
 PyMySQL==1.1.1
 pypdf==5.4.0
 pyreadline3==3.5.4

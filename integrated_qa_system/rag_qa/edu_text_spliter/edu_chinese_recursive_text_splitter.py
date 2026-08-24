@@ -78,12 +78,12 @@ class ChineseRecursiveTextSplitter(RecursiveCharacterTextSplitter):
         super().__init__(keep_separator=keep_separator, **kwargs)
         # 默认分隔符优先级：段落 > 换行 > 中文句末标点 > 英文句末标点 > 分号 > 逗号
         self._separators = separators or [
-            "\n\n",          # 段落分隔（最高优先级）
-            "\n",            # 换行
-            "。|！|？",       # 中文句末标点
-            "\.\s|\!\s|\?\s", # 英文句末标点（后跟空格）
-            "；|;\s",         # 分号
-            "，|,\s"          # 逗号（最低优先级）
+            "\n\n",                # 段落分隔（最高优先级）
+            "\n",                  # 换行
+            "。|！|？",             # 中文句末标点
+            r"\.\s|\!\s|\?\s",     # 英文句末标点（后跟空格）
+            r"；|;\s",             # 分号
+            r"，|,\s"              # 逗号（最低优先级）
         ]
         self._is_separator_regex = is_separator_regex
 
@@ -171,4 +171,5 @@ if __name__ == "__main__":
         print(inum)
         chunks = text_splitter.split_text(text)
         for chunk in chunks:
+            print("="*50)
             print(chunk)
