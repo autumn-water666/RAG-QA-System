@@ -1596,3 +1596,28 @@
 2026-08-24 21:51:13,779 - EduRAG - INFO - 已加载集合 edu_rag
 2026-08-24 22:06:49,681 - EduRAG - INFO - 使用设置：cpu
 2026-08-24 22:06:56,869 - EduRAG - INFO - 已加载集合 edu_rag
+2026-08-31 20:37:26,691 - EduRAG - INFO - 使用设备: cpu
+2026-08-31 20:38:06,787 - EduRAG - WARNING - 未找到已训练模型目录 E:\ai-gent\RAG\integrated_qa_system\rag_qa\bert_query_classifier，已初始化为随机权重。若仅用于预测，请先调用 train_model() 训练并保存模型。
+2026-08-31 20:39:17,207 - EduRAG - INFO - 使用设备: cpu
+2026-08-31 20:39:57,383 - EduRAG - WARNING - 未找到已训练模型目录 e:\ai-gent\RAG\integrated_qa_system\rag_qa\bert_query_classifier，已初始化为随机权重。若仅用于预测，请先调用 train_model() 训练并保存模型。
+2026-08-31 20:39:57,394 - EduRAG - INFO - 加载数据集: 1830 条，类别分布: {np.str_('专业咨询'): np.int64(1030), np.str_('通用知识'): np.int64(800)}
+2026-08-31 20:39:57,926 - EduRAG - INFO - 开始训练 BERT 模型...
+2026-08-31 20:49:38,757 - EduRAG - INFO - 模型保存至: e:\ai-gent\RAG\integrated_qa_system\rag_qa\bert_query_classifier
+2026-08-31 20:49:46,510 - EduRAG - INFO - 分类报告:
+2026-08-31 20:49:46,532 - EduRAG - INFO -               precision    recall  f1-score   support
+
+        通用知识       0.98      0.99      0.98       160
+        专业咨询       1.00      0.98      0.99       206
+
+    accuracy                           0.99       366
+   macro avg       0.99      0.99      0.99       366
+weighted avg       0.99      0.99      0.99       366
+
+2026-08-31 20:49:46,532 - EduRAG - INFO - 混淆矩阵:
+2026-08-31 20:49:46,534 - EduRAG - INFO - [[159   1]
+ [  4 202]]
+2026-09-01 19:52:09,885 - EduRAG - INFO - 使用设备: cpu
+2026-09-01 19:52:09,981 - EduRAG - INFO - 加载已训练模型: e:\ai-gent\RAG\integrated_qa_system\rag_qa\bert_query_classifier
+2026-09-01 19:54:48,553 - EduRAG - INFO - 使用设备: cpu
+2026-09-01 19:54:48,646 - EduRAG - INFO - 加载已训练模型: E:\ai-gent\RAG\integrated_qa_system\rag_qa\bert_query_classifier
+2026-09-01 20:59:34,541 - EduRAG - INFO - 为查询 '你好吗' 选择的检索策略：直接检索

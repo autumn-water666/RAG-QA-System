@@ -48,3 +48,9 @@ integrated_qa_system/config.ini
 /integrated_qa_system/rag_qa/bge-reranker-large/
 integrated_qa_system/rag_qa/nlp_bert_document-segmentation_chinese-base/
 integrated_qa_system/rag_qa/bge-m3
+integrated_qa_system/rag_qa/bert_query_classifier
+integrated_qa_system/rag_qa/bert_results
+integrated_qa_system/rag_qa/bert_results
+integrated_qa_system/logs/app.log
+.idea/
+.claude/settings.json

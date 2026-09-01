@@ -68,6 +68,12 @@ class Config():
         # 重排序后返回的父块数量
         self.CANDIDATE_M = self.config.getint('retrieval', 'candidate_m', fallback=5)
 
+        # LLM 配置
+        self.LLM_MODEL_NAME = self.config.get('llm', 'model_name', fallback='mimo-v2.5')
+        self.DASHSCOPE_BASE_URL = self.config.get('llm', 'dashscope_base_url', fallback='https://api.xiaomimimo.com/v1')
+        self.DASHSCOPE_API_KEY = self.config.get('llm', 'dashscope_api_key', fallback='no-key')
+
+
 
 if __name__ == '__main__':
     config_file = 'integrated_qa_system/config.ini'

@@ -56,7 +56,8 @@
       "Read(//e/e/ai-gent/RAG/integrated_qa_system/rag_qa/data/**)",
       "Bash(PYTHONIOENCODING=utf-8 ../../../.venv/Scripts/python.exe vector_store.py)",
       "Bash(PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe integrated_qa_system/rag_qa/core/vector_store.py)",
-      "Bash(PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe -c ' *)"
+      "Bash(PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe -c ' *)",
+      "Bash(uv python *)"
     ]
   }
 }
