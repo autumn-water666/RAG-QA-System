@@ -73,6 +73,9 @@ class Config():
         self.DASHSCOPE_BASE_URL = self.config.get('llm', 'dashscope_base_url', fallback='https://api.xiaomimimo.com/v1')
         self.DASHSCOPE_API_KEY = self.config.get('llm', 'dashscope_api_key', fallback='no-key')
 
+        # 其他配置
+        self.CUSTOMER_SERVICE_PHONE = self.config.get('app', 'CUSTOMER_SERVICE_PHONE', fallback='12345678')
+
 
 
 if __name__ == '__main__':
