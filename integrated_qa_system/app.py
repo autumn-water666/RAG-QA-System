@@ -15,6 +15,10 @@ import re
 # 导入现有的系统
 from new_main import IntegratedQASystem
 
+# 当前文件所在目录，用于拼接静态文件绝对路径，避免 uvicorn 工作目录不同时找不到文件
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
 # 创建应用实例
 app = FastAPI(title="问答系统API", description="集成MySQL和RAG的智能问答系统")
 
@@ -28,7 +32,7 @@ app.add_middleware(
 )
 
 # 创建静态文件目录
-os.makedirs("static", exist_ok=True)
+os.makedirs(STATIC_DIR, exist_ok=True)
 
 # 创建全局QA系统实例
 qa_system = IntegratedQASystem()
@@ -67,12 +71,12 @@ class QueryResponse(BaseModel):
     processing_time: float
 
 # 添加静态文件服务
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # 根路径重定向到index.html
 @app.get("/")
 async def read_root():
-    return FileResponse("static/index.html")
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 # 创建新会话
 @app.post("/api/create_session")
