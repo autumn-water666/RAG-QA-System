@@ -74,7 +74,8 @@ class Config():
         self.DASHSCOPE_API_KEY = self.config.get('llm', 'dashscope_api_key', fallback='no-key')
 
         # 其他配置
-        self.CUSTOMER_SERVICE_PHONE = self.config.get('app', 'CUSTOMER_SERVICE_PHONE', fallback='12345678')
+        self.CUSTOMER_SERVICE_PHONE = self.config.get('app', 'customer_service_phone', fallback='12345678')
+        self.VALID_SOURCES = self.config.get('app', 'valid_sources', fallback=["ai", "java", "test", "ops", "bigdata"])
 
 
 

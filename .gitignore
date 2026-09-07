@@ -51,6 +51,7 @@ integrated_qa_system/rag_qa/bge-m3
 integrated_qa_system/rag_qa/bert_query_classifier
 integrated_qa_system/rag_qa/bert_results
 integrated_qa_system/rag_qa/bert_results
-integrated_qa_system/logs/app.log
+/integrated_qa_system/logs/
 .idea/
 .claude/settings.json
+

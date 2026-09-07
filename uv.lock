@@ -978,6 +978,20 @@ wheels = [
 ]
 
 [[package]]
+name = "langchain-openai"
+version = "0.3.14"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
+dependencies = [
+    { name = "langchain-core" },
+    { name = "openai" },
+    { name = "tiktoken" },
+]
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/7f/ec/8042fd9b8cfb8e295eaf673c79fc8139aca0dd75506241b69e77efe2b850/langchain_openai-0.3.14.tar.gz", hash = "sha256:0662db78620c2e5c3ccfc1c36dc959c0ddc80e6bdf7ef81632cbf4b2cc9b9461" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/6f/34/d7af3c272fbdd214aa74d7bb23ef36eb6c3463fd557f2f0cd5126ea41536/langchain_openai-0.3.14-py3-none-any.whl", hash = "sha256:b8e648d2d7678a5540818199d141ff727c6f1514294b3e1e999a95357c9d66a0" },
+]
+
+[[package]]
 name = "langchain-text-splitters"
 version = "0.3.8"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
@@ -2057,6 +2071,7 @@ dependencies = [
     { name = "langchain-core" },
     { name = "langchain-milvus" },
     { name = "langchain-ollama" },
+    { name = "langchain-openai" },
     { name = "langchain-text-splitters" },
     { name = "langdetect" },
     { name = "langsmith" },
@@ -2240,6 +2255,7 @@ requires-dist = [
     { name = "langchain-core", specifier = "==0.3.55" },
     { name = "langchain-milvus", specifier = "==0.1.8" },
     { name = "langchain-ollama", specifier = "==0.2.3" },
+    { name = "langchain-openai", specifier = ">=0.3.14" },
     { name = "langchain-text-splitters", specifier = "==0.3.8" },
     { name = "langdetect", specifier = "==1.0.9" },
     { name = "langsmith", specifier = "==0.3.9" },
@@ -2818,6 +2834,25 @@ source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/b7/4d/08c89e34946fce2aec4fbb45c9016efd5f4d7f24af8e5d93296e935631d8/threadpoolctl-3.6.0.tar.gz", hash = "sha256:8ab8b4aa3491d812b623328249fab5302a68d2d71745c8a4c719a2fcaba9f44e" }
 wheels = [
     { url = "https://mirrors.aliyun.com/pypi/packages/32/d5/f9a850d79b0851d1d4ef6456097579a9005b31fea68726a4ae5f2d82ddd9/threadpoolctl-3.6.0-py3-none-any.whl", hash = "sha256:43a0b8fd5a2928500110039e43a5eed8480b918967083ea48dc3ab9f13c4a7fb" },
+]
+
+[[package]]
+name = "tiktoken"
+version = "0.14.0"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple/" }
+dependencies = [
+    { name = "regex" },
+    { name = "requests" },
+]
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/66/62/167a842aa0429d45f5e797354fd4343a96f6043d67d0513c675c7b8d36e6/tiktoken-0.14.0.tar.gz", hash = "sha256:231dec90efcdccf1b565a1416107736f1e09b1a08fe736ef9d6363e626d03874" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/50/53/ee1453623bf65f019328721ccb6587846d2c5b7b82f34e73ca09101f072e/tiktoken-0.14.0-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:e9c5fe393aab56469f04e432ff851216d3def3436cf5f07e442a240164bf500f" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/ad/5f/6448cfe278c3664ba9ec5b5ac08344341f7dc3d42888476e215a14eda2be/tiktoken-0.14.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:cbe2cc3bba939bcdaf103e03df9d5039d33887080b315624be28ec69059e5f94" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/69/3b/d67eac1bcce9dee3abe23aff5e3ded3116bbebaf67b80a0811c06d3806fc/tiktoken-0.14.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:2157f52e4b4d7ac5ecc7457b3716834706e7ef9a46f5144029bfeb7cf71f4e06" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/37/62/cae690d9783146b0f81f564ada0f8f611de68178c0c9c7e1e969f0516b48/tiktoken-0.14.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:26e60f6a956ee171ab728b37b8439905d7ea1db435c30f9822f291e9861c861d" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/b9/1e/633e30237b94e383cf814145499079f3bb9cdd4aeafc1bc42e01b0f810a6/tiktoken-0.14.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:380873f330b741c4435574f37edb20813d04603ace2d53e0a63560e1fec83010" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/cb/56/4c12f07b812f84206f38d723eb1ebfdd34bad9309b5dbc0bee6bbcff4cbf/tiktoken-0.14.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:3fd7c14b1cb45b486c39fc9b3443bb341f3e2fc7e6f31247f3435a5836651632" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/c9/e0/c65603f0c44811def666d3fbf611bf2af3b5e1ef613e06c19411419830b3/tiktoken-0.14.0-cp313-cp313-win_amd64.whl", hash = "sha256:90a762670c7f968184723769a06ed51f5cf5ce5dcd1e30164f25c72d85c2d1f1" },
 ]
 
 [[package]]

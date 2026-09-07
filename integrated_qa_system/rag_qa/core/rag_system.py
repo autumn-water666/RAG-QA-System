@@ -1,6 +1,8 @@
 # core/rag_system.py 源码
 import os 
 import sys
+
+from langchain_openai import ChatOpenAI
 # 路径设置：先把 rag_qa 和项目根目录加入 sys.path，再导入项目内模块（base.logger）。
 # 否则从其他目录启动时 `from base import logger` 会 ImportError（与 core/vector_store.py 同样的问题）。
 current_dir = os.path.dirname(os.path.abspath(__file__))  # core/
@@ -28,9 +30,9 @@ class RAGSystem:
         self.llm = llm
         #   获取 RAG 提示模板
         self.rag_prompt = RAGPrompts.rag_prompt()
-        #   初始化查询分类器
-        classifier_model_path = os.path.join(rag_qa_path, 'core', 'bert_query_classifier')
-        self.query_classifier = QueryClassifier(model_path=classifier_model_path)
+        #   初始化查询分类器（不传 model_path 用默认路径 rag_qa/bert_query_classifier，
+        #   与 query_classifier.py 训练时的保存位置一致，避免路径差一层导致找不到模型）
+        self.query_classifier = QueryClassifier()
         #   初始化策略选择器
         self.strategy_selector = StrategySelector()
 
@@ -200,3 +202,27 @@ class RAGSystem:
         processing_time = time.time() - start_time
         logger.info(f"查询处理完成 (耗时: {processing_time:.2f}s, 查询: '{query}')")
         return answer
+
+if __name__ == "__main__":
+    #   测试 RAGSystem 类
+    from vector_store import VectorStore  #   导入向量数据库类
+
+    #   初始化向量数据库和大语言模型
+    def llm(prompt):
+        #这里可以替换为实际的 LLM 调用逻辑，例如调用 OpenAI API 或其他模型
+        LLM=ChatOpenAI(
+        model=conf.LLM_MODEL_NAME,
+        base_url=conf.DASHSCOPE_BASE_URL,
+        api_key=conf.DASHSCOPE_API_KEY,
+        )
+        response = LLM.invoke(prompt)
+        return response.content.strip()
+    vector_store = VectorStore()
+
+    #   创建 RAGSystem 实例
+    rag_system = RAGSystem(vector_store, llm)
+
+    #   测试查询
+    test_query = "什么是人工智能？"
+    answer = rag_system.generate_answer(test_query)
+    print(f"查询: {test_query}\n答案: {answer}")
