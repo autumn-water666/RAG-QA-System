@@ -41,7 +41,7 @@ def main(query_mode=True, directory_path="data"):
             return f"错误: LLM客户端不可用"
         try:
             completion = client.chat.completions.create(
-                model=conf.LLM_MODEL,
+                model=conf.LLM_MODEL_NAME,
                 messages=[
                     {"role": "system", "content": "你是一个有用的助手."},
                     {"role": "user", "content": prompt},
