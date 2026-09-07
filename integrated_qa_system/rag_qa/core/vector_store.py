@@ -10,18 +10,16 @@ from langchain.docstore.document import Document
 from sentence_transformers import CrossEncoder
 # 导入 hashlib 模块，用于生成唯一 ID 的哈希值
 import hashlib
-from document_processor import *
 import sys, os
-# 获取当前文件所在目录的绝对路径
-current_dir = os.path.dirname(os.path.abspath(__file__))
-# print(f'current_dir--》{current_dir}')
-# 获取core文件所在的目录的绝对路径
-rag_qa_path = os.path.dirname(current_dir)
-# print(f'rag_qa_path--》{rag_qa_path}')
+# 路径设置：先把 core、rag_qa 和项目根目录加入 sys.path，再导入项目内模块。
+# 否则从其他目录启动时 `from document_processor import *` 和 `from base import logger` 会 ImportError。
+current_dir = os.path.dirname(os.path.abspath(__file__))  # core/
+rag_qa_path = os.path.dirname(current_dir)                # rag_qa/
+project_root = os.path.dirname(rag_qa_path)               # integrated_qa_system/
+sys.path.insert(0, current_dir)
 sys.path.insert(0, rag_qa_path)
-# 获取根目录文件所在的绝对位置
-project_root = os.path.dirname(rag_qa_path)
 sys.path.insert(0, project_root)
+from document_processor import *
 from base import logger, Config
 
 

@@ -10,6 +10,7 @@ rag_qa_path = os.path.dirname(current_dir)                # rag_qa/
 project_root = os.path.dirname(rag_qa_path)               # integrated_qa_system/
 sys.path.insert(0, rag_qa_path)
 sys.path.insert(0, project_root)
+sys.path.insert(0, current_dir)
 from prompts import RAGPrompts
 #   导入 time 模块，用于计算时间
 import time
@@ -36,6 +37,16 @@ class RAGSystem:
         #   初始化策略选择器
         self.strategy_selector = StrategySelector()
 
+    def _call_llm_text(self, prompt) -> str:
+        """调用 LLM 并拼接为完整字符串，兼容两种 llm：
+        一次性返回字符串的普通函数，以及按 token 产出的流式生成器。"""
+        result = self.llm(prompt)
+        if isinstance(result, str):
+            return result
+        if hasattr(result, "__iter__"):
+            return "".join(str(token) for token in result)
+        return str(result)
+
     #   定义私有方法，使用假设文档进行检索（HyDE）
     def _retrieve_with_hyde(self, query, source_filter=None):
         logger.info(f"使用 HyDE 策略进行检索 (查询: '{query}')")
@@ -43,7 +54,7 @@ class RAGSystem:
         hyde_prompt_template = RAGPrompts.hyde_prompt() # 使用 template 后缀区分
         #   调用大语言模型生成假设答案
         try:
-            hypo_answer = self.llm(hyde_prompt_template.format(query=query)).strip()
+            hypo_answer = self._call_llm_text(hyde_prompt_template.format(query=query)).strip()
             logger.info(f"HyDE 生成的假设答案: '{hypo_answer}'")
             #   使用假设答案进行检索，并返回检索结果
             #   注意：HyDE 通常只用于生成检索向量，不一定需要 rerank 这一步，但这里复用了
@@ -62,7 +73,7 @@ class RAGSystem:
         subquery_prompt_template = RAGPrompts.subquery_prompt() # 使用 template 后缀区分
         try:
             #   调用大语言模型生成子查询列表
-            subqueries_text = self.llm(subquery_prompt_template.format(query=query)).strip()
+            subqueries_text = self._call_llm_text(subquery_prompt_template.format(query=query)).strip()
             subqueries = [q.strip() for q in subqueries_text.split("\n") if q.strip()]
             logger.info(f"生成的子查询: {subqueries}")
             if not subqueries:
@@ -102,7 +113,7 @@ class RAGSystem:
         backtrack_prompt_template = RAGPrompts.backtracking_prompt() # 使用 template 后缀区分
         try:
             #   调用大语言模型生成回溯问题
-            simplified_query = self.llm(backtrack_prompt_template.format(query=query)).strip()
+            simplified_query = self._call_llm_text(backtrack_prompt_template.format(query=query)).strip()
             logger.info(f"生成的回溯问题: '{simplified_query}'")
             #   使用回溯问题进行检索，并返回检索结果
             return self.vector_store.hybrid_search_with_rerank(
@@ -139,69 +150,79 @@ class RAGSystem:
         logger.info(f"最终选取 {len(final_context_docs)} 个文档作为上下文")
         return final_context_docs
 
-    #   定义方法，生成答案
-    def generate_answer(self, query, source_filter=None):
+    #   定义方法，流式生成答案
+    def generate_answer(self, query, source_filter=None, history=None):
+        """流式生成答案。
+
+        Args:
+            query: 用户问题。
+            source_filter: 学科过滤条件。
+            history: 对话历史，格式 [{"question":..., "answer":...}, ...]，用于多轮上下文。
+
+        Yields:
+            逐段产出的答案文本 token。
+        """
         #   记录查询开始时间
         start_time = time.time()
         logger.info(f"开始处理查询: '{query}', 学科过滤: {source_filter}")
+
+        #   将最近对话历史转成文本，并入上下文，让模型能看到多轮背景
+        history_context = ""
+        if history:
+            history_context = "\n".join(
+                f"用户: {item['question']}\n助手: {item['answer']}" for item in history
+            )
 
         #   判断查询类型
         query_category = self.query_classifier.predict_category(query)
         logger.info(f"查询分类结果：{query_category} (查询: '{query}')")
 
-        #   如果查询属于“通用知识”类别，则直接使用 LLM 回答
+        #   如果查询属于“通用知识”类别，直接使用 LLM 回答（不使用检索上下文）
         if query_category == "通用知识":
             logger.info("查询为通用知识，直接调用 LLM")
-            prompt_input = self.rag_prompt.format(
-                context="", question=query, phone=conf.CUSTOMER_SERVICE_PHONE
-            )  #   不使用上下文
-            try:
-                answer = self.llm(prompt_input)
-            except Exception as e:
-                logger.error(f"直接调用 LLM 失败: {e}")
-                answer = f"抱歉，处理您的通用知识问题时出错。请联系人工客服：{conf.CUSTOMER_SERVICE_PHONE}"
-            processing_time = time.time() - start_time
-            logger.info(
-                f"通用知识查询处理完成 (耗时: {processing_time:.2f}s, 查询: '{query}')"
-            )
-            return answer
-
-        #   否则，进行 RAG 检索并生成答案
-        logger.info("查询为专业咨询，执行 RAG 流程")
-        #   选择检索策略
-        strategy = self.strategy_selector.select_strategy(query)
-
-        #   检索相关文档
-        context_docs = self.retrieve_and_merge(
-            query, source_filter=source_filter, strategy=strategy
-        )  #   传递 strategy
-
-        #   准备上下文
-        if context_docs:
-            context = "\n\n".join([doc.page_content for doc in context_docs]) # 使用换行符分隔文档
-            logger.info(f"构建上下文完成，包含 {len(context_docs)} 个文档块")
-            # logger.debug(f"上下文内容:\n{context[:500]}...") # Debug 日志可以打印部分上下文
+            context = history_context
         else:
-            context = ""
-            logger.info("未检索到相关文档，上下文为空")
+            #   专业咨询：执行 RAG 检索
+            logger.info("查询为专业咨询，执行 RAG 流程")
+            #   选择检索策略
+            strategy = self.strategy_selector.select_strategy(query)
+            #   检索相关文档
+            context_docs = self.retrieve_and_merge(
+                query, source_filter=source_filter, strategy=strategy
+            )
+            #   准备上下文
+            if context_docs:
+                context = "\n\n".join([doc.page_content for doc in context_docs])
+                logger.info(f"构建上下文完成，包含 {len(context_docs)} 个文档块")
+            else:
+                context = ""
+                logger.info("未检索到相关文档，上下文为空")
+            if history_context:
+                context = f"对话历史:\n{history_context}\n\n当前检索到的上下文:\n{context}"
 
         #   构造 Prompt，调用大语言模型生成答案
         prompt_input = self.rag_prompt.format(
             context=context, question=query, phone=conf.CUSTOMER_SERVICE_PHONE
         )
-        # logger.debug(f"最终生成的 Prompt:\n{prompt_input}") # Debug 日志
 
+        #   流式产出答案：兼容一次性返回字符串的 llm 与按 token 产出的流式生成器
         try:
-            answer = self.llm(prompt_input)
+            result = self.llm(prompt_input)
+            if isinstance(result, str):
+                yield result
+            elif hasattr(result, "__iter__"):
+                for token in result:
+                    if token:
+                        yield token
+            else:
+                yield str(result)
         except Exception as e:
-            logger.error(f"调用 LLM 生成最终答案失败: {e}")
-            answer = f"抱歉，处理您的专业咨询问题时出错。请联系人工客服：{conf.CUSTOMER_SERVICE_PHONE}"
-
+            logger.error(f"调用 LLM 生成答案失败: {e}")
+            yield f"抱歉，处理您的问题时出错。请联系人工客服：{conf.CUSTOMER_SERVICE_PHONE}"
 
         #   记录查询处理完成的日志
         processing_time = time.time() - start_time
         logger.info(f"查询处理完成 (耗时: {processing_time:.2f}s, 查询: '{query}')")
-        return answer
 
 if __name__ == "__main__":
     #   测试 RAGSystem 类
@@ -224,5 +245,5 @@ if __name__ == "__main__":
 
     #   测试查询
     test_query = "什么是人工智能？"
-    answer = rag_system.generate_answer(test_query)
+    answer = "".join(rag_system.generate_answer(test_query))
     print(f"查询: {test_query}\n答案: {answer}")

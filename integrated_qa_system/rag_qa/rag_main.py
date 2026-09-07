@@ -138,7 +138,7 @@ def main(query_mode=True, directory_path="data"):
 
             try:
                 print("正在生成答案，请稍候...")
-                answer = rag_system.generate_answer(query, source_filter=source_filter)
+                answer = "".join(rag_system.generate_answer(query, source_filter=source_filter))
                 print("-" * 30)
                 print(f"问题: {query}")
                 print(f"回答: {answer}")
