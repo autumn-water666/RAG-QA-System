@@ -44,6 +44,10 @@ CACHEDIR.TAG
 /config.ini
 integrated_qa_system/config.ini
 
+# Node.js frontend dependencies
+node_modules/
+frontend/node_modules/
+
 # Large model directories
 /integrated_qa_system/rag_qa/bge-reranker-large/
 integrated_qa_system/rag_qa/nlp_bert_document-segmentation_chinese-base/

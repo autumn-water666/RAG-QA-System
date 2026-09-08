@@ -1,5 +1,5 @@
 from fastapi import FastAPI, WebSocket, HTTPException, Query, Depends
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
@@ -72,14 +72,6 @@ class QueryResponse(BaseModel):
     is_streaming: bool
     session_id: str
     processing_time: float
-
-# 添加静态文件服务
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-# 根路径重定向到index.html
-@app.get("/")
-async def read_root():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 # 创建新会话
 @app.post("/api/create_session")
@@ -257,6 +249,10 @@ async def health_check():
 @app.get("/api/sources")
 async def get_sources():
     return {"sources": qa_system.config.VALID_SOURCES}
+
+# 静态资源：Vite 构建产物输出到 static/，base 用相对路径，assets/ 相对根目录解析。
+# 必须放在最后挂载在 "/"，只兜底未匹配到的路径，避免吞掉上面 /api/* 与 WebSocket 路由。
+app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
