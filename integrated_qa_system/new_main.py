@@ -297,8 +297,8 @@ class IntegratedQASystem:
     def query_graph_stream(self, query, source_filter=None, session_id=None):
         """LangGraph 编排 + 逐 token 流式产出，契约与 query() 一致。
 
-        复用 __init__ 里已编译好的 self.qa_graph，逐 token 产出 (token, is_complete)，
-        结束时（is_complete=True）落库对话历史。
+        复用 __init__ 里已编译好的 self.qa_graph，逐 token 产出 (token, is_complete, sources)，
+        结束时（is_complete=True）落库对话历史，并把引用溯源 sources 一并透出给上游。
         """
         start_time = time.time()
         self.logger.info(f"[graph] 处理查询: '{query}' (会话ID: {session_id})")
@@ -306,7 +306,7 @@ class IntegratedQASystem:
         history = self.get_session_history(session_id) if session_id else []
         # 累积 token，结束后写历史
         collected = []
-        for token, is_complete in _stream_from_compiled(
+        for token, is_complete, sources in _stream_from_compiled(
                 self.qa_graph, query, source_filter=source_filter, history=history):
             collected.append(token)
             if is_complete:
@@ -316,7 +316,7 @@ class IntegratedQASystem:
                     self.update_session_history(session_id, query, answer)
                 processing_time = time.time() - start_time
                 self.logger.info(f"查询处理耗时 {processing_time:.2f}秒")
-            yield token, is_complete
+            yield token, is_complete, sources
 
 
 def main():

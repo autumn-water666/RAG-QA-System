@@ -59,3 +59,6 @@ integrated_qa_system/rag_qa/bert_results
 .idea/
 .claude/settings.json
 
+
+# CodeGraph 本地索引（构建产物，不入库）
+.codegraph/

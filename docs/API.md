@@ -67,7 +67,7 @@ npm run dev
 | DELETE | `/api/history/{session_id}` | 已有 | 清除会话历史 |
 | POST | `/api/query` | 已有(兼容) | 非流式查询（前端不再用） |
 | WS | `/api/stream` | 已有 | 流式问答（WebSocket） |
-| WS | `end`.sources 透出 | 规划 | 引用溯源 |
+| WS | `end`.sources 透出 | 已有 | 引用溯源 |
 | GET | `/api/kb/documents` | 规划 | 知识库文档列表 |
 | GET | `/api/kb/documents/{doc_id}` | 规划 | 文档详情（命中高亮） |
 | POST | `/api/kb/documents` | 规划 | 上传文档，增量索引 |
@@ -200,7 +200,7 @@ WebSocket 单通道。客户端一次连接一答一问。
 
 **流程**：`start` → `token`×N → `end`。前端收到 `end` 关闭连接；收到 `error` 展示后关闭。问候语/BM25 快答也会走 token 单次 + end。
 
-**引用溯源（规划）**：服务端在 `end` 帧携带 `sources`。生成方式：`generate` 节点持有的 `state["context_docs"]`（带 `metadata` 的 Document 列表）映射为 `Source[]`——
+**引用溯源**：服务端在 `end` 帧携带 `sources`。生成方式：`retrieve` 节点持有的 `state["context_docs"]`（带 `metadata` 的父文档列表）经 `graph._build_sources()` 映射为 `Source[]`，随 `end` 帧透出——
 ```
 index    ≤ 检索排序
 title    文档标题（后端实现时从 document_processor 元数据取，缺省回退 "文档片段N"）
@@ -253,7 +253,7 @@ url      `#/kb/${doc.metadata["parent_id"]}`
 
 ## 8. Roadmap（后端补接口顺序）
 
-1. `end.sources` 透出（引用溯源点亮前端「参考来源」）
+1. ✅ `end.sources` 透出（引用溯源点亮前端「参考来源」，已上线）
 2. `GET /api/kb/documents` + `GET /api/kb/documents/{id}`（知识库浏览 + 文档详情）
 3. `POST /api/kb/documents`（上传/增量索引）
 4. `GET /api/kb/search`（库内搜索）

@@ -198,13 +198,17 @@ async def websocket_endpoint(websocket: WebSocket):
                 except Exception as e:
                     # 生成中途异常也要保证发结束标志，避免前端永远等待
                     logger.error(f"[ws] 流式生成异常: {e}")
-                    asyncio.run_coroutine_threadsafe(out_q.put(("", True)), loop)
+                    asyncio.run_coroutine_threadsafe(out_q.put(("", True, [])), loop)
 
             worker = threading.Thread(target=_produce, daemon=True)
             worker.start()
 
+            # 最后一条 (is_complete=True) 的记录来源（引用溯源），用于 end 帧透出
+            end_sources = []
             while True:
-                token, is_complete = await out_q.get()
+                token, is_complete, sources = await out_q.get()
+                if sources:
+                    end_sources = sources
                 if token and websocket.client_state == websocket.client_state.CONNECTED:
                     # 发送 token 数据
                     await websocket.send_json({
@@ -214,12 +218,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
                 if is_complete:
                     if websocket.client_state == websocket.client_state.CONNECTED:
-                        # 发送结束标志
+                        # 发送结束标志，携带引用溯源 sources
                         await websocket.send_json({
                             "type": "end",
                             "session_id": session_id,
                             "is_complete": True,
-                            "processing_time": time.time() - start_time
+                            "processing_time": time.time() - start_time,
+                            "sources": end_sources,
                         })
                     break
                 await asyncio.sleep(0)  # 让出事件循环，token 到达即发送，无需人为节流

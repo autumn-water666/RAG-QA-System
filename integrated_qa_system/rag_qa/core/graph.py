@@ -207,28 +207,60 @@ def _to_state_input(query, source_filter=None, history=None) -> dict:
     }
 
 
-def _stream_from_compiled(compiled, query, source_filter=None, history=None):
-    """从已编译的图以 (token, is_complete) 形式流式产出，契约与 new_main.query() 一致。
+def _build_sources(docs) -> list:
+    """把检索到的父文档映射为引用溯源 Source[]（契约见 docs/API.md §4）。
 
-    - generate 节点每个 token 经 LangGraph custom 流产出 (token, False)
-    - 非 LLM 直答终端（BM25 命中 / 未找到）一次性产出整串 (answer, False)
-    - 全部结束产出 ("", True) 作为结束标记
+    title 优先 metadata 里的 title / file_path 文件名，缺省回退「文档片段N」。
+    url 指向前端文档详情路由 #/kb/{doc_id}，doc_id 优先，回退 parent_id。
+    snippet 取正文前 80 字符，正文为空时回退父块内容。
+    """
+    sources = []
+    for idx, doc in enumerate(docs, start=1):
+        md = doc.metadata or {}
+        subject = md.get("source") or "未知"
+        raw_title = md.get("title") or md.get("file_path") or ""
+        title = raw_title.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1] or f"文档片段{idx}"
+        doc_id = md.get("doc_id") or md.get("parent_id") or f"doc_{idx}"
+        snippet = (doc.page_content or "").strip()[:80]
+        if not snippet:
+            snippet = (md.get("parent_content") or "")[:80]
+        sources.append({
+            "index": idx,
+            "title": title,
+            "subject": subject,
+            "snippet": snippet,
+            "url": f"#/kb/{doc_id}",
+        })
+    return sources
+
+
+def _stream_from_compiled(compiled, query, source_filter=None, history=None):
+    """从已编译的图以 (token, is_complete, sources) 形式流式产出。
+
+    - generate 节点每个 token 经 LangGraph custom 流产出 (token, False, [])
+    - 非 LLM 直答终端（BM25 命中 / 未找到）一次性产出整串 (answer, False, [])
+    - RAG 路径 retrieve 后持有 context_docs，结束时首个 is_complete=True 的
+      产出携带 sources（引用溯源），前端据此渲染「参考来源」
+    - 全部结束产出 ("", True, sources) 作为结束标记
     """
     inp = _to_state_input(query, source_filter, history)
     terminal_nodes = {"set_bm25_answer", "set_not_found"}
+    context_docs = []
     saw_token = False
     for mode, chunk in compiled.stream(inp, stream_mode=["updates", "custom"]):
         if mode == "custom":
-            yield chunk, False
+            yield chunk, False, []
             saw_token = True
         elif mode == "updates":
             for node, update in (chunk or {}).items():
+                if isinstance(update, dict) and update.get("context_docs"):
+                    context_docs = update["context_docs"]
                 if node in terminal_nodes:
-                    yield update.get("answer", ""), False
-                    yield "", True
+                    yield update.get("answer", ""), False, []
+                    yield "", True, _build_sources(context_docs)
                     return
     if saw_token:
-        yield "", True
+        yield "", True, _build_sources(context_docs)
 
 
 def stream_qa_graph(rag_system, query, source_filter=None, history=None,
@@ -261,6 +293,6 @@ if __name__ == "__main__":
 
     # 流式路径
     parts = []
-    for token, complete in stream_qa_graph(FakeRAG(), "什么是人工智能？", bm25_search=None):
+    for token, complete, sources in stream_qa_graph(FakeRAG(), "什么是人工智能？", bm25_search=None):
         parts.append(token)
     print("stream joined:", "".join(parts))
