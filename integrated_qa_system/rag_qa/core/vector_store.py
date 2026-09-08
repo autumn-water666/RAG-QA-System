@@ -135,10 +135,17 @@ class VectorStore:
         # print(f'embeddings--》{embeddings.keys()}')
         # 初始化空列表，存储插入的数据
         data = []
+        # 同一批次内重复块主键（相同内容哈希的重复块）Milvus 会拒绝：
+        # MilvusException code=1100 duplicate primary keys。重复内容块纯属冗余，
+        # 这里按 id 去重后再组成批次。
+        seen_ids = set()
         # 遍历每个文档，带上索引i
         for i, doc in enumerate(documents):
             # 生成文档内容的哈希值作为唯一的ID
             text_hash = hashlib.md5(doc.page_content.encode('utf-8')).hexdigest()
+            if text_hash in seen_ids:
+                continue
+            seen_ids.add(text_hash)
             # print(f'text_hash--》{text_hash}')
             # print(f'text_hash--》{type(text_hash)}')
             # 初始化一个稀疏向量的字典（Milvus要求存储稀疏向量的格式）
@@ -173,6 +180,7 @@ class VectorStore:
             })
         # 检查是否有数据需要插入
         if data:
+            # 稀疏向量按 id 出现顺序收集在 data 里，此处无需重排（上面已同步跳过去重项）
             # 使用 upsert 操作插入数据，覆盖重复 ID
             self.client.upsert(collection_name=self.collection_name, data=data)
             # 记录插入或更新的文档数量日志
@@ -310,7 +318,7 @@ class VectorStore:
         expr = " and ".join(expr_parts) if expr_parts else None
         kwargs = dict(
             collection_name=self.collection_name,
-            output_fields=["id", "text", "parent_id", "source", "doc_id", "title", "timestamp"],
+            output_fields=["id", "text", "parent_id", "source", "doc_id", "title", "file_path", "timestamp"],
             # Milvus 空表达式必须带 limit（上限 16384），否则直接 500
             limit=limit or 16000,
         )
@@ -398,6 +406,11 @@ class VectorStore:
         res = self.client.delete(collection_name=self.collection_name,
                                  filter=f'doc_id == "{doc_id}"')
         return res.get("delete_count", 0)
+
+    def document_file_paths(self, doc_id: str) -> set:
+        """返回该文档在磁盘上的源文件路径（同文件的所有块路径一致，取一条即可）。"""
+        rows = self._query_chunks(doc_id=doc_id, limit=1)
+        return {r.get("file_path") for r in rows if r.get("file_path")}
 if __name__ == "__main__":
     vector_store = VectorStore()
     # vector_store._create_or_load_collection()

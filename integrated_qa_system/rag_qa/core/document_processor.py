@@ -130,6 +130,97 @@ def load_documents_from_directory(directory_path) -> list[Document]:
     return documents
 
 
+def _split_single_document(doc, doc_index, parent_chunk_size=conf.PARENT_CHUNK_SIZE,
+                           child_chunk_size=conf.CHILD_CHUNK_SIZE,
+                           chunk_overlap=conf.CHUNK_OVERLAP):
+    """把单个已加载 Document 切成父子子块，返回子块列表。
+
+    抽取自 process_documents 的内层循环，供「批量加载」与「单文件上传」复用，
+    保证两条路径的切分行为完全一致。
+
+    Args:
+        doc: 单个已元数据的 Document。
+        doc_index: 该文档在批次的序号，用于生成 doc_0_parent_x_child_y 前缀。
+
+    Returns:
+        该文档的所有子块（带 parent_id/parent_content/id 元数据）。
+    """
+    file_extension = os.path.splitext(doc.metadata.get("file_path", ""))[1].lower()
+    is_markdown = (file_extension == ".md")
+    parent_splitter = ChineseRecursiveTextSplitter(
+        chunk_size=parent_chunk_size, chunk_overlap=chunk_overlap
+    )
+    child_splitter = ChineseRecursiveTextSplitter(
+        chunk_size=child_chunk_size, chunk_overlap=chunk_overlap
+    )
+    # Markdown 专用切分器：能识别标题层级，按结构切分
+    markdown_parent_splitter = MarkdownTextSplitter(
+        chunk_size=parent_chunk_size, chunk_overlap=chunk_overlap
+    )
+    markdown_child_splitter = MarkdownTextSplitter(
+        chunk_size=child_chunk_size, chunk_overlap=chunk_overlap
+    )
+    parent_splitter_to_use = markdown_parent_splitter if is_markdown else parent_splitter
+    child_splitter_to_use = markdown_child_splitter if is_markdown else child_splitter
+
+    child_chunks = []
+    parent_docs = parent_splitter_to_use.split_documents([doc])
+    for j, parent_doc in enumerate(parent_docs):
+        parent_id = f"doc_{doc_index}_parent_{j}"
+        sub_chunks = child_splitter_to_use.split_documents([parent_doc])
+        for k, sub_chunk in enumerate(sub_chunks):
+            sub_chunk.metadata["parent_id"] = parent_id
+            sub_chunk.metadata["parent_content"] = parent_doc.page_content
+            sub_chunk.metadata["id"] = f"{parent_id}_child_{k}"
+            child_chunks.append(sub_chunk)
+    return child_chunks
+
+
+def _attach_doc_metadata(doc, file_path, source):
+    """为单个加载的 Document 补齐学科/路径/时间戳/稳定 ID 元数据。"""
+    doc.metadata["source"] = source
+    doc.metadata["file_path"] = file_path
+    doc.metadata["timestamp"] = datetime.now().isoformat()
+    # 稳定文档 ID：基于文件绝对路径哈希，跨批次一致
+    doc.metadata["doc_id"] = hashlib.md5(os.path.abspath(file_path).encode('utf-8')).hexdigest()
+    doc.metadata["title"] = os.path.splitext(os.path.basename(file_path))[0]
+
+
+def process_file(file_path: str, source: str,
+                 parent_chunk_size=conf.PARENT_CHUNK_SIZE,
+                 child_chunk_size=conf.CHILD_CHUNK_SIZE,
+                 chunk_overlap=conf.CHUNK_OVERLAP) -> list[Document]:
+    """处理单个文件（上传场景），返回子块列表。
+
+    Args:
+        file_path: 单个文件的绝对路径（已保存到本地）。
+        source: 学科类别（如 "ai"），写入每个子块的 source 字段。
+
+    Returns:
+        该文件切分后的子块列表；文件类型不支持时抛 ValueError。
+    """
+    file_extension = os.path.splitext(file_path)[1].lower()
+    if file_extension not in document_loaders:
+        raise ValueError(f"不支持的文件类型: {file_extension}")
+    # 与 load_documents_from_directory 保持一致：.txt/.md 显式 UTF-8，
+    # 其余交给 AnyDocLoader 自动识别
+    if file_extension in (".txt", ".md"):
+        loader = document_loaders[file_extension](file_path, encoding="utf-8")
+    else:
+        loader = document_loaders[file_extension](file_path)
+
+    docs = loader.load()
+    for doc in docs:
+        _attach_doc_metadata(doc, file_path, source)
+
+    child_chunks = []
+    for i, doc in enumerate(docs):
+        child_chunks.extend(_split_single_document(
+            doc, i, parent_chunk_size, child_chunk_size, chunk_overlap))
+    logger.info(f"单文件处理完成: {file_path}，共 {len(child_chunks)} 个子块")
+    return child_chunks
+
+
 def process_documents(directory_path, parent_chunk_size=conf.PARENT_CHUNK_SIZE,
                      child_chunk_size=conf.CHILD_CHUNK_SIZE,
                      chunk_overlap=conf.CHUNK_OVERLAP)  -> list[Document]:
@@ -166,53 +257,15 @@ def process_documents(directory_path, parent_chunk_size=conf.PARENT_CHUNK_SIZE,
     documents = load_documents_from_directory(directory_path)
     logger.info(f"加载的文档数量: {len(documents)}")
 
-    # 第二步：初始化切分器
-    # 通用切分器：适用于 PDF、Word、PPT 等转换后的 Markdown 文本
-    parent_splitter = ChineseRecursiveTextSplitter(
-        chunk_size=parent_chunk_size, chunk_overlap=chunk_overlap
-    )
-    child_splitter = ChineseRecursiveTextSplitter(
-        chunk_size=child_chunk_size, chunk_overlap=chunk_overlap
-    )
-    # Markdown 专用切分器：能识别 Markdown 标题层级，按结构切分
-    markdown_parent_splitter = MarkdownTextSplitter(
-        chunk_size=parent_chunk_size, chunk_overlap=chunk_overlap
-    )
-    markdown_child_splitter = MarkdownTextSplitter(
-        chunk_size=child_chunk_size, chunk_overlap=chunk_overlap
-    )
-
-    # 第三步：逐文档进行分层切分
+    # 第二步：逐文档进行分层切分（统一走 _split_single_document）
     child_chunks = []
     for i, doc in enumerate(documents):
-        file_extension = os.path.splitext(doc.metadata.get("file_path", ""))[1].lower()
-
-        # 根据文件类型选择合适的切分器
-        is_markdown = (file_extension == ".md")
-        parent_splitter_to_use = markdown_parent_splitter if is_markdown else parent_splitter
-        child_splitter_to_use = markdown_child_splitter if is_markdown else child_splitter
         logger.info(
             f"处理文档: {doc.metadata['file_path']}, "
-            f"使用切分器: {'Markdown' if is_markdown else 'ChineseRecursive'}"
+            f"使用切分器: {'Markdown' if os.path.splitext(doc.metadata.get('file_path', ''))[1].lower() == '.md' else 'ChineseRecursive'}"
         )
-
-        # 先用父块切分器将文档切分为大粒度的父块
-        parent_docs = parent_splitter_to_use.split_documents([doc])
-
-        for j, parent_doc in enumerate(parent_docs):
-            # 为父块生成唯一 ID，格式：doc_0_parent_1
-            parent_id = f"doc_{i}_parent_{j}"
-            # parent_doc.metadata["parent_id"] = parent_id
-            # parent_doc.metadata["parent_content"] = parent_doc.page_content
-
-            # 再用子块切分器将每个父块切分为小粒度的子块
-            sub_chunks = child_splitter_to_use.split_documents([parent_doc])
-            for k, sub_chunk in enumerate(sub_chunks):
-                # 为子块添加元数据：关联到父块、保存父块内容、生成唯一 ID
-                sub_chunk.metadata["parent_id"] = parent_id
-                sub_chunk.metadata["parent_content"] = parent_doc.page_content
-                sub_chunk.metadata["id"] = f"{parent_id}_child_{k}"
-                child_chunks.append(sub_chunk)
+        child_chunks.extend(_split_single_document(
+            doc, i, parent_chunk_size, child_chunk_size, chunk_overlap))
 
     logger.info(f"子块数量: {len(child_chunks)}")
     return child_chunks

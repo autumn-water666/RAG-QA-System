@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, HTTPException, Query, Depends
+from fastapi import FastAPI, WebSocket, HTTPException, Query, Depends, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -9,14 +9,16 @@ import asyncio
 import threading
 import json
 import uuid
+import hashlib
 from typing import Optional, List, Dict, Any
 import time
 import re
 
 # 导入现有的系统
 from new_main import IntegratedQASystem
-# 导入日志
+# 日志与单文件切分：上传场景复用 process_file / document_loaders 做增量索引
 from base import logger
+from rag_qa.core.document_processor import process_file, process_documents, document_loaders
 
 # 当前文件所在目录，用于拼接静态文件绝对路径，避免 uvicorn 工作目录不同时找不到文件
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -300,6 +302,107 @@ async def kb_search(q: str = Query(...), subject: Optional[str] = Query(None)):
     subject = _validate_subject(subject)
     results = qa_system.vector_store.search_documents(q, subject=subject)
     return {"results": results}
+
+
+# ---- 知识库写接口（上传 / 删除 / 重建）----
+
+# 文档落盘根目录：rag_qa/data/{subject}_data/
+DATA_ROOT = os.path.join(BASE_DIR, "rag_qa", "data")
+
+
+@app.post("/api/kb/documents")
+async def kb_upload_document(file: UploadFile = File(...), subject: Optional[str] = Form(None)):
+    """上传文档，切块 → 向量化 → 增量写入 Milvus。失败整体回滚（删索引 + 删文件）。"""
+    subject = _validate_subject(subject) or qa_system.config.VALID_SOURCES[0]
+    raw_name = os.path.basename((file.filename or "").replace("\\", "/"))
+    if not raw_name or not os.path.splitext(raw_name)[1]:
+        raise HTTPException(status_code=400, detail="文件名无效或缺少扩展名")
+    ext = os.path.splitext(raw_name)[1].lower()
+    if ext not in document_loaders:
+        raise HTTPException(status_code=400, detail=f"不支持的文件类型: {ext}")
+
+    # 落盘到学科数据目录；同名文件覆盖（doc_id 一致，Milvus upsert 幂等）
+    target_dir = os.path.join(DATA_ROOT, f"{subject}_data")
+    os.makedirs(target_dir, exist_ok=True)
+    save_path = os.path.join(target_dir, raw_name)
+    # 稳定文档 ID 与 load 路径保持一致，供删除/去重/详情定位
+    doc_id = hashlib.md5(os.path.abspath(save_path).encode('utf-8')).hexdigest()
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="上传内容为空")
+    with open(save_path, "wb") as f:
+        f.write(content)
+
+    try:
+        chunks = process_file(save_path, subject)
+        if not chunks:
+            raise HTTPException(status_code=500, detail="文档切分后未生成有效内容")
+        qa_system.vector_store.add_documents(chunks)
+    except HTTPException:
+        # 业务性错误（如空内容已被上面拦截），直接回滚文件后原样抛
+        if os.path.exists(save_path):
+            os.remove(save_path)
+        raise
+    except Exception as e:
+        # 处理/入库失败：删已入库索引 + 删除落盘文件，保证没有半成品
+        logger.error(f"[kb] 上传处理失败 {save_path}: {e}")
+        try:
+            qa_system.vector_store.delete_document(doc_id)
+        except Exception:
+            pass
+        if os.path.exists(save_path):
+            os.remove(save_path)
+        raise HTTPException(status_code=500, detail=f"文档处理失败: {e}")
+
+    return {
+        "id": doc_id,
+        "title": os.path.splitext(raw_name)[0],
+        "subject": subject,
+        "chunk_count": len(chunks),
+    }
+
+
+@app.delete("/api/kb/documents/{doc_id}")
+async def kb_delete_document(doc_id: str):
+    """删除文档：下索引 + 删磁盘源文件。剩余 0 块视为不存在。"""
+    # 先取源文件路径，便于一并清理磁盘（重建时不再捡回孤儿文件）
+    disk_paths = qa_system.vector_store.document_file_paths(doc_id)
+    removed = qa_system.vector_store.delete_document(doc_id)
+    for p in disk_paths:
+        try:
+            if p and os.path.exists(p):
+                os.remove(p)
+                logger.info(f"[kb] 已删除磁盘文件: {p}")
+        except Exception as e:
+            logger.warning(f"[kb] 删除磁盘文件 {p} 失败: {e}")
+    return {"status": "success", "deleted_chunks": removed}
+
+
+@app.post("/api/kb/rebuild")
+async def kb_rebuild():
+    """全量重建：遍历 rag_qa/data/*_data 重新切块并 upsert（幂等，不先清空）。
+
+    说明：add_documents 以文本哈希为块主键做 upsert，重复执行天然覆盖，
+    无需先清库，避免重建中途失败把整个索引清空。
+    """
+    if not os.path.isdir(DATA_ROOT):
+        raise HTTPException(status_code=500, detail="数据目录不存在")
+    subjects, total = {}, 0
+    for entry in sorted(os.listdir(DATA_ROOT)):
+        subject_dir = os.path.join(DATA_ROOT, entry)
+        subject = entry.replace("_data", "")
+        if not (os.path.isdir(subject_dir) and subject):
+            continue
+        chunks = process_documents(subject_dir)
+        subjects[subject] = len(chunks)
+        if chunks:
+            qa_system.vector_store.add_documents(chunks)
+            total += len(chunks)
+            logger.info(f"[kb] 重建学科 {subject}: {len(chunks)} 块")
+        else:
+            logger.warning(f"[kb] 学科 {subject} 无有效内容")
+    return {"status": "success", "subjects": subjects, "total_chunks": total}
 
 # 静态资源：Vite 构建产物输出到 static/，base 用相对路径，assets/ 相对根目录解析。
 # 必须放在最后挂载在 "/"，只兜底未匹配到的路径，避免吞掉上面 /api/* 与 WebSocket 路由。

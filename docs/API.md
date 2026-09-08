@@ -70,10 +70,10 @@ npm run dev
 | WS | `end`.sources 透出 | 已有 | 引用溯源 |
 | GET | `/api/kb/documents` | 已有 | 知识库文档列表 |
 | GET | `/api/kb/documents/{doc_id}` | 已有 | 文档详情（全文+切块） |
-| POST | `/api/kb/documents` | 规划 | 上传文档，增量索引 |
-| DELETE | `/api/kb/documents/{doc_id}` | 规划 | 删除文档并下索引 |
-| GET | `/api/kb/search` | 规划 | 库内全文/语义搜索 |
-| POST | `/api/kb/rebuild` | 规划 | 重建知识库索引 |
+| POST | `/api/kb/documents` | 已有 | 上传文档，增量索引 |
+| DELETE | `/api/kb/documents/{doc_id}` | 已有 | 删除文档并下索引 |
+| GET | `/api/kb/search` | 已有 | 库内全文/语义搜索 |
+| POST | `/api/kb/rebuild` | 已有 | 重建知识库索引 |
 | POST | `/api/sessions/{sid}/feedback` | 规划 | 答案反馈 👍/👎 |
 
 ---
@@ -222,12 +222,14 @@ url      `#/kb/${doc.metadata["parent_id"]}`
 - **返回** `DocDetail`（含全文 + 有序切块），不存在返回 404。
 
 ### 6.3 POST `/api/kb/documents`（上传，multipart/form-data）
-- **请求体**：文件字段 `file`，可选 `subject`（自动识别或用户指定）。
-- **行为**：切块 → 向量化 → 写入 Milvus（增量），失败回滚。
+- **请求体**：文件字段 `file`，可选表单字段 `subject`（缺省落在第一个合法学科；非法值 → 400）。
+- **行为**：文件落盘到 `rag_qa/data/{subject}_data/`（同名覆盖），切块 → 向量化 → 写入 Milvus（增量）。
+  `doc_id` = 落盘绝对路径 md5。**失败整体回滚**：删除已入库索引 + 删除落盘文件，不留半成品。
 - **返回** `{ "id": "...", "title": "...", "subject": "...", "chunk_count": 12 }`
 
 ### 6.4 DELETE `/api/kb/documents/{doc_id}`
-- **返回** `{ "status": "success" }`
+- **行为**：下索引 + 删除磁盘源文件（源文件路径从 Milvus 块元数据取）。
+- **返回** `{ "status": "success", "deleted_chunks": 1 }`；不存在时 `deleted_chunks` 为 0。
 
 ### 6.5 GET `/api/kb/search?q=&subject=`
 - `q` 必填；`subject` 可选（非法值 → 400）。
@@ -235,7 +237,8 @@ url      `#/kb/${doc.metadata["parent_id"]}`
   v1 用正文 LIKE 关键词匹配按文档聚合，`score` 暂为 `null`；后续可切向量检索带距离分。
 
 ### 6.6 POST `/api/kb/rebuild`
-- 全量重建向量索引。**返回** `{ "status": "started" }`；危险操作前端需二次确认。
+- 全量重建：遍历 `rag_qa/data/*_data` 目录重新切块并 `upsert`（块主键 = 文本哈希，幂等，不先清库，避免重建中断清空索引）。
+- **返回** `{ "status": "success", "subjects": { "ai": 12 }, "total_chunks": 12 }`。
 
 ---
 
@@ -260,6 +263,6 @@ url      `#/kb/${doc.metadata["parent_id"]}`
 
 1. ✅ `end.sources` 透出（引用溯源点亮前端「参考来源」，已上线）
 2. ✅ `GET /api/kb/documents` + `GET /api/kb/documents/{id}`（知识库浏览 + 文档详情，已上线）+ `GET /api/kb/search`（库内搜索）
-3. `POST /api/kb/documents`（上传/增量索引）
-4. `GET /api/kb/search`（库内搜索）
-5. `POST /api/kb/rebuild`、`POST /api/.../feedback`（维护 + 反馈）
+3. ✅ `POST /api/kb/documents`（上传/增量索引）+ `DELETE /api/kb/documents/{id}`（删除）+ `POST /api/kb/rebuild`（重建，已上线）
+4. ✅ `GET /api/kb/search`（库内搜索）
+5. `POST /api/.../feedback`（答案 👍/👎 反馈）
