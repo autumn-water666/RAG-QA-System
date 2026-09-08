@@ -45,6 +45,14 @@ export const api = {
     if (subject) params.set('subject', subject)
     return (await jfetch(`/api/kb/search?${params}`)).results // -> Result[]
   },
+  uploadDocument: (file, subject) => {
+    // multipart 上传：字段 file + 可选 subject，响应见 docs/API.md §6.3
+    const fd = new FormData()
+    fd.append('file', file)
+    if (subject) fd.append('subject', subject)
+    return jfetch('/api/kb/documents', { method: 'POST', body: fd })
+  },
+  deleteDocument: (docId) => jfetch(`/api/kb/documents/${docId}`, { method: 'DELETE' }), // -> { status }
 
   // ---- 健康 ----
   health: async () => (await jfetch('/health')).status, // -> 'healthy'

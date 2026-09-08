@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 
@@ -8,6 +8,26 @@ export default function KbPage() {
   const [keyword, setKeyword] = useState('') // 库内关键词过滤
   const [docList, setDocList] = useState([]) // 当前学科文档
   const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false) // 上传中
+  const [uploadMsg, setUploadMsg] = useState('') // 上传态提示（成功/失败）
+  const fileInputRef = useRef(null)
+
+  async function onUploadFile(e) {
+    const file = e.target.files && e.target.files[0]
+    e.target.value = '' // 允许重复选同一文件
+    if (!file) return
+    setUploadMsg('')
+    setUploading(true)
+    try {
+      const ret = await api.uploadDocument(file, activeKb)
+      setUploadMsg(`已上传「${ret.title}」，${ret.chunk_count} 块`)
+      loadDocs(activeKb, keyword.trim())
+    } catch (err) {
+      setUploadMsg(`上传失败：${err.message}`)
+    } finally {
+      setUploading(false)
+    }
+  }
 
   useEffect(() => {
     loadSources()
@@ -73,14 +93,27 @@ export default function KbPage() {
             placeholder={`在 ${activeKb || '知识库'} 内搜索…`}
             aria-label="库内搜索"
           />
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="kb-file"
+            accept=".txt,.md,.pdf,.doc,.docx,.ppt,.pptx,.rtf,.epub,.csv,.xls,.xlsx"
+            style={{ display: 'none' }}
+            onChange={onUploadFile}
+          />
           <button
             className="primary-btn kb-upload"
-            onClick={() => console.warn('[待后端] 上传文档接口尚未实现')}
+            disabled={uploading}
+            onClick={() => fileInputRef.current && fileInputRef.current.click()}
           >
-            ＋ 上传文档
+            {uploading ? '上传中…' : '＋ 上传文档'}
           </button>
         </div>
       </div>
+
+      {uploadMsg && (
+        <p className="kb-upload-msg" aria-live="polite">{uploadMsg}</p>
+      )}
 
       <div className="kb-main">
         <section className="kb-docs">
