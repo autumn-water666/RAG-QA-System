@@ -6,6 +6,7 @@ from starlette.websockets import WebSocketDisconnect
 import os
 from pydantic import BaseModel
 import asyncio
+import threading
 import json
 import uuid
 from typing import Optional, List, Dict, Any
@@ -14,6 +15,8 @@ import re
 
 # 导入现有的系统
 from new_main import IntegratedQASystem
+# 导入日志
+from base import logger
 
 # 当前文件所在目录，用于拼接静态文件绝对路径，避免 uvicorn 工作目录不同时找不到文件
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -184,20 +187,27 @@ async def websocket_endpoint(websocket: WebSocket):
                         "processing_time": time.time() - start_time
                     })
                 break
-            # 调用问答系统，流式处理查询
-            collected_answer = ""
-            for token, is_complete in qa_system.query(query, source_filter=source_filter, session_id=session_id):
-                collected_answer += token  # 累积答案
-                if is_complete and not collected_answer:
-                    if websocket.client_state == websocket.client_state.CONNECTED:
-                        # 发送结束标志
-                        await websocket.send_json({
-                            "type": "end",
-                            "session_id": session_id,
-                            "is_complete": True,
-                            "processing_time": time.time() - start_time
-                        })
-                    break
+            # 用 LangGraph 编排层流式处理查询。
+            # 同步生成器在 worker 线程中步进，经 asyncio 队列回传事件循环，
+            # 避免一个慢查询阻塞整棵事件循环（旧实现直接同步迭代会卡住其他客户端）。
+            loop = asyncio.get_running_loop()
+            out_q = asyncio.Queue()
+
+            def _produce():
+                try:
+                    for item in qa_system.query_graph_stream(
+                            query, source_filter=source_filter, session_id=session_id):
+                        asyncio.run_coroutine_threadsafe(out_q.put(item), loop)
+                except Exception as e:
+                    # 生成中途异常也要保证发结束标志，避免前端永远等待
+                    logger.error(f"[ws] 流式生成异常: {e}")
+                    asyncio.run_coroutine_threadsafe(out_q.put(("", True)), loop)
+
+            worker = threading.Thread(target=_produce, daemon=True)
+            worker.start()
+
+            while True:
+                token, is_complete = await out_q.get()
                 if token and websocket.client_state == websocket.client_state.CONNECTED:
                     # 发送 token 数据
                     await websocket.send_json({
@@ -215,7 +225,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "processing_time": time.time() - start_time
                         })
                     break
-                await asyncio.sleep(0.01)  # 控制流式输出的速度
+                await asyncio.sleep(0)  # 让出事件循环，token 到达即发送，无需人为节流
     except WebSocketDisconnect as e:
         # 记录 WebSocket 断开信息
         print(f"WebSocket disconnected: code={e.code}, reason={e.reason}")

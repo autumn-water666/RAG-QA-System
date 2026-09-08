@@ -75,7 +75,11 @@ class Config():
 
         # 其他配置
         self.CUSTOMER_SERVICE_PHONE = self.config.get('app', 'customer_service_phone', fallback='12345678')
-        self.VALID_SOURCES = self.config.get('app', 'valid_sources', fallback=["ai", "java", "test", "ops", "bigdata"])
+        # valid_sources 存的是逗号分隔字符串，转成真正可迭代的列表，
+        # 否则下游 迭代/join/成员判断 都会拿整串字符串当列表用
+        raw_sources = self.config.get('app', 'valid_sources', fallback='')
+        self.VALID_SOURCES = [s.strip() for s in raw_sources.split(',') if s.strip()] \
+            if raw_sources else ["ai", "java", "test", "ops", "bigdata"]
 
 
 

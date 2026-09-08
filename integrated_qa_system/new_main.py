@@ -3,6 +3,8 @@
 from mysql_qa import MySQLClient, RedisClient, BM25Search
 # 导入 RAG 系统组件，用于知识库检索和答案生成
 from rag_qa import VectorStore, RAGSystem
+# 导入 LangGraph 编排层，用于把路由/检索/生成流程化
+from rag_qa.core.graph import build_qa_graph, _stream_from_compiled
 # 导入配置和日志工具，用于系统配置和日志记录
 from base import logger, Config
 # 导入 OpenAI 客户端，用于调用 DashScope API
@@ -40,6 +42,8 @@ class IntegratedQASystem:
         self.rag_system = RAGSystem(self.vector_store, self.call_dashscope)
         # 初始化对话历史表，用于存储会话记录
         self.init_conversation_table()
+        # 构建 LangGraph 编排图（复用上面初始化好的 RAGSystem 与 BM25Search）
+        self.qa_graph = build_qa_graph(self.rag_system, self.bm25_search)
 
     def init_conversation_table(self):
         """初始化MySQL中的conversations表，用于存储对话历史"""
@@ -233,6 +237,58 @@ class IntegratedQASystem:
             self.logger.info(f"查询处理耗时 {processing_time:.2f}秒")
             # 一次性返回默认答案，标记为完整
             yield "未找到答案", True
+
+    def query_graph(self, query, source_filter=None, session_id=None):
+        """使用 LangGraph 编排层执行查询。
+
+        与 query() 保持一致的 (token, is_complete) 产出契约，方便切换：
+        目前图内 generate 节点一次生成完整答案，因此这里一次性产出完整答案；
+        后续要真正逐 token 流式，可改为通过 graph.astream_events 迭代。
+        """
+        start_time = time.time()
+        self.logger.info(f"[graph] 处理查询: '{query}' (会话ID: {session_id})")
+        # 获取对话历史
+        history = self.get_session_history(session_id) if session_id else []
+        # 调用 LangGraph 编排：classify → (通用知识直答 | BM25 | RAG检索) → generate
+        state = self.qa_graph.invoke({
+            "query": query,
+            "source_filter": source_filter,
+            "history": history,
+        })
+        answer = state["answer"]
+        self.logger.info(f"[graph] 分类: {state.get('category')}, "
+                         f"策略: {state.get('strategy')}")
+        if session_id:
+            # 更新对话历史
+            self.update_session_history(session_id, query, answer)
+        processing_time = time.time() - start_time
+        self.logger.info(f"查询处理耗时 {processing_time:.2f}秒")
+        # 一次性返回完整答案，标记为完整
+        yield answer, True
+
+    def query_graph_stream(self, query, source_filter=None, session_id=None):
+        """LangGraph 编排 + 逐 token 流式产出，契约与 query() 一致。
+
+        复用 __init__ 里已编译好的 self.qa_graph，逐 token 产出 (token, is_complete)，
+        结束时（is_complete=True）落库对话历史。
+        """
+        start_time = time.time()
+        self.logger.info(f"[graph] 处理查询: '{query}' (会话ID: {session_id})")
+        # 获取对话历史
+        history = self.get_session_history(session_id) if session_id else []
+        # 累积 token，结束后写历史
+        collected = []
+        for token, is_complete in _stream_from_compiled(
+                self.qa_graph, query, source_filter=source_filter, history=history):
+            collected.append(token)
+            if is_complete:
+                # 流结束，更新对话历史
+                answer = "".join(collected)
+                if session_id:
+                    self.update_session_history(session_id, query, answer)
+                processing_time = time.time() - start_time
+                self.logger.info(f"查询处理耗时 {processing_time:.2f}秒")
+            yield token, is_complete
 
 
 def main():
