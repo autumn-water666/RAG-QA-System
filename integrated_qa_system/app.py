@@ -164,6 +164,11 @@ async def websocket_endpoint(websocket: WebSocket):
             # 检查是否为日常问候
             greeting_response = check_greeting(query)
             if greeting_response:
+                # 问候也写入对话历史，与 RAG/BM25 回复保持一致，刷新后不丢
+                try:
+                    qa_system.update_session_history(session_id, query, greeting_response)
+                except Exception as e:
+                    logger.error(f"[ws] 问候历史写入失败: {e}")
                 if websocket.client_state == websocket.client_state.CONNECTED:
                     # 发送问候回复
                     await websocket.send_json({
@@ -250,10 +255,15 @@ async def health_check():
 async def get_sources():
     return {"sources": qa_system.config.VALID_SOURCES}
 
+# 列出所有历史会话（供前端左栏会话列表切换）
+@app.get("/api/sessions")
+async def list_sessions():
+    return {"sessions": qa_system.list_sessions()}
+
 # 静态资源：Vite 构建产物输出到 static/，base 用相对路径，assets/ 相对根目录解析。
 # 必须放在最后挂载在 "/"，只兜底未匹配到的路径，避免吞掉上面 /api/* 与 WebSocket 路由。
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run("app:app", host="0.0.0.0", port=8001, reload=False)

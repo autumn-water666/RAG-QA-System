@@ -123,6 +123,34 @@ class IntegratedQASystem:
         # 调用 _fetch_recent_history 获取对话历史
         return self._fetch_recent_history(session_id)
 
+    def list_sessions(self):
+        """列出所有有对话历史的会话，按最近活动倒序（供前端会话列表渲染）"""
+        try:
+            self.mysql_client.cursor.execute("""
+                SELECT c.session_id,
+                       MAX(c.timestamp) AS last_time,
+                       (SELECT question FROM conversations q
+                        WHERE q.session_id = c.session_id
+                        ORDER BY q.timestamp DESC LIMIT 1) AS preview,
+                       COUNT(*) AS count
+                FROM conversations c
+                GROUP BY c.session_id
+                ORDER BY last_time DESC
+            """)
+            rows = self.mysql_client.cursor.fetchall()
+            return [
+                {
+                    "session_id": r[0],
+                    "last_time": r[1].isoformat() if r[1] else None,
+                    "preview": r[2] or "（空会话）",
+                    "count": r[3],
+                }
+                for r in rows
+            ]
+        except pymysql.MySQLError as e:
+            self.logger.error(f"列出会话失败: {e}")
+            return []
+
     def update_session_history(self, session_id: str, question: str, answer: str) -> list:
         """更新会话历史到MySQL，保留最近5轮对话"""
         try:
