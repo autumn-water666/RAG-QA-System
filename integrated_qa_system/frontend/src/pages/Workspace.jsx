@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import { api } from '../lib/api'
 import SessionTab from '../components/SessionTab'
 import MessageBubble from '../components/MessageBubble'
 import Composer from '../components/Composer'
-
-const API = ''
-const WS_BASE =
-  `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/stream`
 
 const WELCOME = '您好！我是智能问答助手，有什么我可以帮您的吗？'
 
@@ -47,9 +44,8 @@ export default function Workspace() {
 
   async function loadSessions() {
     try {
-      const r = await fetch(`${API}/api/sessions`)
-      const data = await r.json()
-      setSessions(data.sessions || [])
+      const list = await api.getSessions()
+      setSessions(list || [])
     } catch (e) {
       console.error('加载会话列表失败', e)
     }
@@ -57,9 +53,8 @@ export default function Workspace() {
 
   async function loadSources() {
     try {
-      const r = await fetch(`${API}/api/sources`)
-      const data = await r.json()
-      setSources(data.sources || [])
+      const list = await api.getSources()
+      setSources(list || [])
     } catch (e) {
       console.error('加载学科失败', e)
     }
@@ -68,8 +63,7 @@ export default function Workspace() {
   async function loadHistory(sid) {
     if (!sid) return
     try {
-      const r = await fetch(`${API}/api/history/${sid}`)
-      const { history } = await r.json()
+      const history = await api.getHistory(sid)
       const msgs = [{ id: nextId(), role: 'assistant', text: WELCOME, sources: [] }]
       for (const it of history || []) {
         msgs.push({ id: nextId(), role: 'user', text: it.question })
@@ -83,8 +77,7 @@ export default function Workspace() {
 
   async function createSession() {
     try {
-      const r = await fetch(`${API}/api/create_session`, { method: 'POST' })
-      const { session_id } = await r.json()
+      const { session_id } = await api.createSession()
       localStorage.setItem('eduraq_session', session_id)
       setSessionId(session_id)
       setMessages([{ id: nextId(), role: 'assistant', text: WELCOME, sources: [] }])
@@ -106,7 +99,7 @@ export default function Workspace() {
   async function clearHistory() {
     if (!sessionId || isStreaming) return
     try {
-      await fetch(`${API}/api/history/${sessionId}`, { method: 'DELETE' })
+      await api.clearHistory(sessionId)
       setMessages([{ id: nextId(), role: 'assistant', text: '历史已清除，有什么我可以帮您的吗？', sources: [] }])
       loadSessions()
     } catch (e) {
@@ -165,7 +158,7 @@ export default function Workspace() {
     ])
     accRef.current = ''
 
-    const ws = new WebSocket(WS_BASE)
+    const ws = new WebSocket(api.wsStreamUrl())
     socketRef.current = ws
     setIsStreaming(true)
 

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-
-const API = ''
+import { api } from '../lib/api'
 
 export default function KbPage() {
   const [sources, setSources] = useState([])
@@ -14,10 +13,9 @@ export default function KbPage() {
 
   async function loadSources() {
     try {
-      const r = await fetch(`${API}/api/sources`)
-      const data = await r.json()
-      setSources(data.sources || [])
-      if (data.sources && data.sources.length) setActiveKb(data.sources[0])
+      const list = await api.getSources()
+      setSources(list || [])
+      if (list && list.length) setActiveKb(list[0])
     } catch (e) {
       console.error('加载学科失败', e)
     }
