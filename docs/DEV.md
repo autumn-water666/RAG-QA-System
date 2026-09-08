@@ -67,3 +67,18 @@ UI 提问 ──ws──▶ /api/stream
 - 接口变更先改 `docs/API.md`（见 §0 copy 约定）。
 - 提交信息写详细，分点列出改动（见记忆规范）。
 - 后端不套 `{code,msg,data}` 外壳，用原生 REST + `{"detail":...}` 错误。
+
+## 本地基础设施（Docker）
+
+不在仓库内，由 `E:\develop\docker_data\docker-compose.yml` 维护（docker_data 项目），连接凭据见 `config.ini`：
+
+| 服务 | 镜像 | 端口 | 认证 |
+|---|---|---|---|
+| Milvus | `zilliztech/milvus:v2.6.18`（阿里镜像源）| 19530(gRPC) / 9091(管理，无 WebUI) | **未开鉴权**，客户端不传 user/password |
+| etcd | `quay.io/coreos/etcd:v3.5.5` | 2379 | — |
+| MySQL | `mysql:8.0` | 3306 | root / 123456 |
+| Redis | `teable/redis:7.2.4` | 6379 | 密码 1234 |
+
+- Milvus 存储为 **local**（`milvus_data` 命名卷），无 MinIO；元数据在 etcd（容器层，未挂卷）。
+- Milvus 曾从 2.5.4 升到 2.6.18（相邻小升级数据保留）；升级前备份在 `E:\develop\docker_data\backup\milvus_data_*.tar.gz`。
+- Attu 图形客户端需 v2.x（连 2.4/2.5）或 v3.0（连 2.6+/3.x），认证选「无」。
