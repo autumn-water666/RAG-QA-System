@@ -265,6 +265,42 @@ async def get_sources():
 async def list_sessions():
     return {"sessions": qa_system.list_sessions()}
 
+
+def _validate_subject(subject: Optional[str]) -> Optional[str]:
+    """校验学科过滤参数，非法值抛 400，None 原样返回。"""
+    if subject is None:
+        return None
+    if subject not in qa_system.config.VALID_SOURCES:
+        raise HTTPException(status_code=400, detail=f"未知学科 '{subject}'，可选：{qa_system.config.VALID_SOURCES}")
+    return subject
+
+
+# ---- 知识库读接口（浏览 / 详情 / 库内搜索）----
+
+@app.get("/api/kb/documents")
+async def kb_list_documents(subject: Optional[str] = Query(None), q: Optional[str] = Query(None)):
+    """知识库文档列表：按学科过滤 + 可选库内关键词过滤。"""
+    subject = _validate_subject(subject)
+    documents = qa_system.vector_store.list_documents(subject=subject, q=q)
+    return {"documents": documents}
+
+
+@app.get("/api/kb/documents/{doc_id}")
+async def kb_get_document(doc_id: str):
+    """单个文档详情（全文 + 有序切块）。"""
+    detail = qa_system.vector_store.get_document(doc_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail=f"文档 {doc_id} 不存在")
+    return detail
+
+
+@app.get("/api/kb/search")
+async def kb_search(q: str = Query(...), subject: Optional[str] = Query(None)):
+    """库内关键词搜索，按文档聚合返回命中摘要。"""
+    subject = _validate_subject(subject)
+    results = qa_system.vector_store.search_documents(q, subject=subject)
+    return {"results": results}
+
 # 静态资源：Vite 构建产物输出到 static/，base 用相对路径，assets/ 相对根目录解析。
 # 必须放在最后挂载在 "/"，只兜底未匹配到的路径，避免吞掉上面 /api/* 与 WebSocket 路由。
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

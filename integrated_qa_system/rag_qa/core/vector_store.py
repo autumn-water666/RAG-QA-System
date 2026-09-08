@@ -83,6 +83,12 @@ class VectorStore:
             schema.add_field(field_name="parent_content", datatype=DataType.VARCHAR, max_length=65535)
             # 添加学科类别字段，VARCHAR 类型，最大长度 50
             schema.add_field(field_name="source", datatype=DataType.VARCHAR, max_length=50)
+            # 添加文档级 ID 字段：同一文件的全部块共享，稳定跨批次，用于按文档删除/去重/详情
+            schema.add_field(field_name="doc_id", datatype=DataType.VARCHAR, max_length=100)
+            # 添加文档标题字段（文件名去扩展名），供前端列表与引用溯源直接展示
+            schema.add_field(field_name="title", datatype=DataType.VARCHAR, max_length=255)
+            # 添加来源文件路径字段，删除文档时可定位磁盘文件
+            schema.add_field(field_name="file_path", datatype=DataType.VARCHAR, max_length=1024)
             # 添加时间戳字段，VARCHAR 类型，最大长度 50
             schema.add_field(field_name="timestamp", datatype=DataType.VARCHAR, max_length=50)
 
@@ -160,6 +166,9 @@ class VectorStore:
                 "parent_id": doc.metadata["parent_id"],
                 "parent_content": doc.metadata["parent_content"],
                 "source": doc.metadata.get("source", "unknown"),
+                "doc_id": doc.metadata.get("doc_id", ""),
+                "title": doc.metadata.get("title", ""),
+                "file_path": doc.metadata.get("file_path", ""),
                 "timestamp": doc.metadata.get("timestamp", "unknown")
             })
         # 检查是否有数据需要插入
@@ -215,7 +224,7 @@ class VectorStore:
             reqs=[dense_request, sparse_request],
             ranker=ranker,
             limit=k,
-            output_fields=["text", "parent_id", "parent_content", "source", "timestamp"]
+            output_fields=["text", "parent_id", "parent_content", "source", "doc_id", "title", "timestamp"]
         )[0]
         # print(f'results--》{results}')
         # print(f'results--》{type(results)}')
@@ -274,9 +283,121 @@ class VectorStore:
                 "parent_id": hit.get("parent_id"),
                 "parent_content": hit.get("parent_content"),
                 "source": hit.get("source"),
+                "doc_id": hit.get("doc_id"),
+                "title": hit.get("title"),
                 "timestamp": hit.get("timestamp")
             }
         )
+
+    # ============================================================
+    # 知识库浏览/文档管理 —— 基于文档级元数据（doc_id/title）聚合
+    # ============================================================
+
+    @staticmethod
+    def _doc_filter(subject=None):
+        """拼接知识库查询的标量过滤表达式。subject 可选。"""
+        return f'source == "{subject}"' if subject else ""
+
+    def _query_chunks(self, subject=None, doc_id=None, q=None, limit=None):
+        """查询块级数据，返回原始行列表。按 subject / doc_id / q(正文 LIKE) 过滤。"""
+        expr_parts = []
+        if subject:
+            expr_parts.append(f'source == "{subject}"')
+        if doc_id:
+            expr_parts.append(f'doc_id == "{doc_id}"')
+        if q:
+            expr_parts.append(f'text like "%{q}%"')
+        expr = " and ".join(expr_parts) if expr_parts else None
+        kwargs = dict(
+            collection_name=self.collection_name,
+            output_fields=["id", "text", "parent_id", "source", "doc_id", "title", "timestamp"],
+            # Milvus 空表达式必须带 limit（上限 16384），否则直接 500
+            limit=limit or 16000,
+        )
+        if expr:
+            kwargs["filter"] = expr
+        return self.client.query(**kwargs)
+
+    def list_documents(self, subject=None, q=None) -> list[dict]:
+        """列出知识库文档（按 doc_id 聚合块）。返回 DocSummary 列表见 docs/API.md §4。"""
+        rows = self._query_chunks(subject=subject, q=q)
+        docs = {}
+        for r in rows:
+            doc_id = r.get("doc_id") or r.get("parent_id") or r.get("id")
+            p = docs.setdefault(doc_id, {
+                "id": doc_id,
+                "title": r.get("title") or f"文档片段{len(docs) + 1}",
+                "subject": r.get("source", "未知"),
+                "updated_at": r.get("timestamp", ""),
+                "chunk_count": 0,
+            })
+            p["chunk_count"] += 1
+            if not p["updated_at"]:
+                p["updated_at"] = r.get("timestamp", "")
+        return list(docs.values())
+
+    def get_document(self, doc_id: str) -> dict:
+        """取单个文档详情（含全文 + 有序块列表），不存在返回 None。"""
+        rows = self._query_chunks(doc_id=doc_id)
+        if not rows:
+            return None
+        # 用父块拼接全文：parent_id 形如 doc_{i}_parent_{j}，按 j 保序去重
+        parents = {}
+        for r in rows:
+            pid = r.get("parent_id")
+            if pid and pid not in parents:
+                parents[pid] = r.get("parent_content") or r.get("text")
+        ordered = sorted(parents.items(), key=lambda kv: self._parent_order(kv[0]))
+        title = rows[0].get("title") or f"文档{r.get('parent_id', doc_id)[:8] if (r := rows[0]) else doc_id}"
+        return {
+            "id": doc_id,
+            "title": title,
+            "subject": rows[0].get("source", "未知"),
+            "updated_at": rows[0].get("timestamp", ""),
+            "chunk_count": len(rows),
+            "content": "\n\n".join(text for _, text in ordered),
+            "chunks": [{"id": r.get("id"), "text": r.get("text"),
+                        "parent_id": r.get("parent_id")} for r in rows],
+        }
+
+    def search_documents(self, query: str, subject=None, k=10) -> list[dict]:
+        """库内语义/关键词混合搜索，返回按文档聚合的 Results（见 docs/API.md §6.5）。
+
+        v1 用正文 LIKE 做关键词匹配（标量检索），按 doc_id 聚合给出首块摘要。
+        后续可换成 hybrid_search 带距离分。
+
+        Args:
+            query: 搜索关键词。
+            subject: 可选学科过滤。
+            k: 聚合后最多返回的文档数。
+        """
+        rows = self._query_chunks(subject=subject, q=query)
+        docs = {}
+        for r in rows:
+            doc_id = r.get("doc_id") or r.get("parent_id") or r.get("id")
+            p = docs.setdefault(doc_id, {
+                "doc_id": doc_id,
+                "title": r.get("title") or f"文档片段{len(docs) + 1}",
+                "snippet": r.get("text", "")[:80],
+                "score": None,
+            })
+            if not p["snippet"]:
+                p["snippet"] = r.get("text", "")[:80]
+        return list(docs.values())[:k]
+
+    @staticmethod
+    def _parent_order(parent_id: str) -> int:
+        """从 parent_id（doc_0_parent_5）解析父块序号，用于全文排序。"""
+        try:
+            return int(parent_id.rsplit("_parent_", 1)[-1])
+        except (ValueError, AttributeError, IndexError):
+            return 0
+
+    def delete_document(self, doc_id: str) -> int:
+        """按文档删除所有块，返回删除条数。"""
+        res = self.client.delete(collection_name=self.collection_name,
+                                 filter=f'doc_id == "{doc_id}"')
+        return res.get("delete_count", 0)
 if __name__ == "__main__":
     vector_store = VectorStore()
     # vector_store._create_or_load_collection()

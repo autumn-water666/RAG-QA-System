@@ -15,6 +15,7 @@
     检索时用子块匹配问题，命中后可拿到 parent_content 作为更完整的上下文。
 """
 import os
+import hashlib
 from langchain_community.document_loaders import TextLoader
 from langchain.text_splitter import MarkdownTextSplitter
 from datetime import datetime
@@ -112,6 +113,13 @@ def load_documents_from_directory(directory_path) -> list[Document]:
                         doc.metadata["source"] = source          # 学科类别
                         doc.metadata["file_path"] = file_path    # 文件完整路径
                         doc.metadata["timestamp"] = datetime.now().isoformat()  # 加载时间
+                        # 稳定文档 ID：基于文件绝对路径哈希，跨批次一致，
+                        # 供知识库按文档删除 / 去重 / 详情定位（父块 id 里的序号不可靠）。
+                        doc.metadata["doc_id"] = hashlib.md5(
+                            os.path.abspath(file_path).encode('utf-8')).hexdigest()
+                        # 文档标题：取文件名（去扩展名），块继承后前端列表直接用
+                        doc.metadata["title"] = os.path.splitext(
+                            os.path.basename(file_path))[0]
 
                     documents.extend(loaded_docs)
                     logger.info(f"成功加载文件: {file_path}")

@@ -32,6 +32,20 @@ export const api = {
   // ---- 来源 ----
   getSources: async () => (await jfetch('/api/sources')).sources, // -> string[]
 
+  // ---- 知识库 ----
+  getDocuments: async (subject, q = '') => {
+    const params = new URLSearchParams()
+    if (subject) params.set('subject', subject)
+    if (q) params.set('q', q)
+    return (await jfetch(`/api/kb/documents?${params}`)).documents // -> DocSummary[]
+  },
+  getDocument: (docId) => jfetch(`/api/kb/documents/${docId}`), // -> DocDetail
+  kbSearch: async (q, subject) => {
+    const params = new URLSearchParams({ q })
+    if (subject) params.set('subject', subject)
+    return (await jfetch(`/api/kb/search?${params}`)).results // -> Result[]
+  },
+
   // ---- 健康 ----
   health: async () => (await jfetch('/health')).status, // -> 'healthy'
 

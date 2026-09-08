@@ -564,7 +564,9 @@ button { font-family: inherit; }
 .doc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .doc-card {
   width: 100%;
+  box-sizing: border-box;
   text-align: left;
+  text-decoration: none;
   padding: 12px 14px;
   border: 1px solid var(--border);
   background: var(--panel);
@@ -578,6 +580,16 @@ button { font-family: inherit; }
 .doc-card:hover { border-color: var(--primary); }
 .doc-title { font-size: 14px; font-weight: 600; color: var(--text); }
 .doc-meta { font-size: 12px; color: var(--muted); }
+
+/* 文档详情：全文可折叠 + 有序切块 */
+.doc-raw { margin-top: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+.doc-raw summary { cursor: pointer; padding: 10px 14px; font-size: 13px; color: var(--text); font-weight: 600; }
+.doc-raw pre { margin: 0; padding: 12px 14px; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.7; color: var(--text); max-height: 340px; overflow-y: auto; border-top: 1px solid var(--border); }
+.doc-chunk-title { margin: 18px 0 8px; font-size: 15px; }
+.doc-chunks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.doc-chunks li { display: flex; gap: 10px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+.doc-chunk-idx { flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.doc-chunk-text { margin: 0; font-size: 13px; line-height: 1.7; color: var(--text); white-space: pre-wrap; word-break: break-word; }
 
 .kb-preview {
   width: 320px;

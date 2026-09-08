@@ -68,8 +68,8 @@ npm run dev
 | POST | `/api/query` | 已有(兼容) | 非流式查询（前端不再用） |
 | WS | `/api/stream` | 已有 | 流式问答（WebSocket） |
 | WS | `end`.sources 透出 | 已有 | 引用溯源 |
-| GET | `/api/kb/documents` | 规划 | 知识库文档列表 |
-| GET | `/api/kb/documents/{doc_id}` | 规划 | 文档详情（命中高亮） |
+| GET | `/api/kb/documents` | 已有 | 知识库文档列表 |
+| GET | `/api/kb/documents/{doc_id}` | 已有 | 文档详情（全文+切块） |
 | POST | `/api/kb/documents` | 规划 | 上传文档，增量索引 |
 | DELETE | `/api/kb/documents/{doc_id}` | 规划 | 删除文档并下索引 |
 | GET | `/api/kb/search` | 规划 | 库内全文/语义搜索 |
@@ -215,11 +215,11 @@ url      `#/kb/${doc.metadata["parent_id"]}`
 ## 6. 待开发知识库接口（规划，URL 占位）
 
 ### 6.1 GET `/api/kb/documents?subject=ai&q=`
-- `subject` 过滤学科；`q` 可选库内关键词过滤。
-- **返回** `{ "documents": DocSummary[] }`
+- `subject` 过滤学科（非法值 → 400）；`q` 可选库内关键词（正文 LIKE）过滤。
+- **返回** `{ "documents": DocSummary[] }`。按 `doc_id` 聚合 Milvus 子块生成，`chunk_count` 为块数。
 
 ### 6.2 GET `/api/kb/documents/{doc_id}`
-- **返回** `DocDetail`（含全文 + 章节/块）
+- **返回** `DocDetail`（含全文 + 有序切块），不存在返回 404。
 
 ### 6.3 POST `/api/kb/documents`（上传，multipart/form-data）
 - **请求体**：文件字段 `file`，可选 `subject`（自动识别或用户指定）。
@@ -230,7 +230,9 @@ url      `#/kb/${doc.metadata["parent_id"]}`
 - **返回** `{ "status": "success" }`
 
 ### 6.5 GET `/api/kb/search?q=&subject=`
-- **返回** `{ "results": [ { "doc_id": "...", "title": "...", "snippet": "...", "score": 0.85 } ] }`
+- `q` 必填；`subject` 可选（非法值 → 400）。
+- **返回** `{ "results": [ { "doc_id": "...", "title": "...", "snippet": "...", "score": 0.85 } ] }`。
+  v1 用正文 LIKE 关键词匹配按文档聚合，`score` 暂为 `null`；后续可切向量检索带距离分。
 
 ### 6.6 POST `/api/kb/rebuild`
 - 全量重建向量索引。**返回** `{ "status": "started" }`；危险操作前端需二次确认。
@@ -246,6 +248,9 @@ url      `#/kb/${doc.metadata["parent_id"]}`
 | `POST /api/create_session` | `api.createSession()` → `{ session_id }` |
 | `GET /api/sessions` | `api.getSessions()` → `Session[]` |
 | `GET /api/history/{id}` | `api.getHistory(sid)` → `HistoryItem[]` |
+| `GET /api/kb/documents` | `api.getDocuments(subject, q)` → `DocSummary[]` |
+| `GET /api/kb/documents/{id}` | `api.getDocument(docId)` → `DocDetail` |
+| `GET /api/kb/search` | `api.kbSearch(q, subject)` → `Result[]` |
 | `DELETE /api/history/{id}` | `api.clearHistory(sid)` |
 | `WS /api/stream` | `api.wsStreamUrl()` → 连接串 |
 
@@ -254,7 +259,7 @@ url      `#/kb/${doc.metadata["parent_id"]}`
 ## 8. Roadmap（后端补接口顺序）
 
 1. ✅ `end.sources` 透出（引用溯源点亮前端「参考来源」，已上线）
-2. `GET /api/kb/documents` + `GET /api/kb/documents/{id}`（知识库浏览 + 文档详情）
+2. ✅ `GET /api/kb/documents` + `GET /api/kb/documents/{id}`（知识库浏览 + 文档详情，已上线）+ `GET /api/kb/search`（库内搜索）
 3. `POST /api/kb/documents`（上传/增量索引）
 4. `GET /api/kb/search`（库内搜索）
 5. `POST /api/kb/rebuild`、`POST /api/.../feedback`（维护 + 反馈）

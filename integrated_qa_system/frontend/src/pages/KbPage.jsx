@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 
 export default function KbPage() {
   const [sources, setSources] = useState([])
   const [activeKb, setActiveKb] = useState('') // 当前学科
-  const [keyword, setKeyword] = useState('') // 库内搜索（待后端）
-  const [preview, setPreview] = useState(null) // 文档预览抽屉
+  const [keyword, setKeyword] = useState('') // 库内关键词过滤
+  const [docList, setDocList] = useState([]) // 当前学科文档
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     loadSources()
@@ -21,8 +23,33 @@ export default function KbPage() {
     }
   }
 
-  // 后端文档接口待接：/api/kb/documents?subject=xxx → 渲染 docList
-  const docList = [] // stub
+  const loadDocs = useCallback(async (subject, q) => {
+    if (!subject) {
+      setDocList([])
+      return
+    }
+    setLoading(true)
+    try {
+      const list = await api.getDocuments(subject, q)
+      setDocList(list || [])
+    } catch (e) {
+      console.error('加载文档失败', e)
+      setDocList([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // 学科切换 / 关键词变化都重新加载（关键词简单做即时请求，量小）
+  useEffect(() => {
+    const t = setTimeout(() => loadDocs(activeKb, keyword.trim()), keyword ? 300 : 0)
+    return () => clearTimeout(t)
+  }, [activeKb, keyword, loadDocs])
+
+  function switchSubject(s) {
+    setActiveKb(s)
+    setKeyword('')
+  }
 
   return (
     <div className="kb-page">
@@ -32,7 +59,7 @@ export default function KbPage() {
             <button
               key={s}
               className={activeKb === s ? 'active' : ''}
-              onClick={() => setActiveKb(s)}
+              onClick={() => switchSubject(s)}
             >
               {s}
             </button>
@@ -43,7 +70,7 @@ export default function KbPage() {
             className="kb-search"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            placeholder="搜索库内内容…（待后端接入）"
+            placeholder={`在 ${activeKb || '知识库'} 内搜索…`}
             aria-label="库内搜索"
           />
           <button
@@ -58,35 +85,28 @@ export default function KbPage() {
       <div className="kb-main">
         <section className="kb-docs">
           <div className="sub-title">学科：{activeKb || '未选择'}</div>
-          {docList.length === 0 ? (
+          {loading ? (
+            <p className="kb-hint">加载中…</p>
+          ) : docList.length === 0 ? (
             <div className="kb-empty">
-              <p>该学科下暂无已入库文档</p>
-              <p className="kb-hint">知识库文档目录接口待后端接入后，这里按学科展示已入库内容并支持增量索引。</p>
+              <p>{keyword ? `「${keyword}」在 ${activeKb} 下没有匹配文档` : `该学科下暂无已入库文档`}</p>
+              <p className="kb-hint">上传文档走「＋ 上传文档」；这里按学科列出已入库内容。</p>
             </div>
           ) : (
             <ul className="doc-list">
               {docList.map((d) => (
                 <li key={d.id}>
-                  <button className="doc-card" onClick={() => setPreview(d)}>
+                  <Link className="doc-card" to={`/kb/${d.id}`}>
                     <span className="doc-title">{d.title}</span>
-                    <span className="doc-meta">{d.subject || activeKb} · {d.updatedAt}</span>
-                  </button>
+                    <span className="doc-meta">
+                      {d.subject} · {d.chunk_count} 块 · {d.updated_at?.slice(0, 19).replace('T', ' ')}
+                    </span>
+                  </Link>
                 </li>
               ))}
             </ul>
           )}
         </section>
-
-        {preview && (
-          <aside className="kb-preview">
-            <button className="kb-preview-close" onClick={() => setPreview(null)} aria-label="关闭预览">×</button>
-            <h3>{preview.title}</h3>
-            <p className="doc-meta">{preview.subject} · 持续更新</p>
-            <div className="kb-preview-body">
-              <p className="kb-hint">文档全文与命中片段高亮待后端文档详情接口接入。</p>
-            </div>
-          </aside>
-        )}
       </div>
     </div>
   )
