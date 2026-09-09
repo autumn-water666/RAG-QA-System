@@ -73,6 +73,19 @@ class Config():
         self.DASHSCOPE_BASE_URL = self.config.get('llm', 'dashscope_base_url', fallback='https://api.xiaomimimo.com/v1')
         self.DASHSCOPE_API_KEY = self.config.get('llm', 'dashscope_api_key', fallback='no-key')
 
+        # 嵌入模型配置（向量化）。embedding_url 非空 → 走远程 OpenAI 兼容 /embeddings；
+        # 留空 → 用本地 bge-m3。远程接口只返回稠密向量，稀疏检索随之降级（见 vector_store）。
+        self.EMBEDDING_URL = self.config.get('models', 'embedding_url', fallback='')
+        self.EMBEDDING_API_KEY = self.config.get('models', 'embedding_api_key', fallback='')
+        self.EMBEDDING_MODEL = self.config.get('models', 'embedding_model', fallback='BAAI/bge-m3')
+        self.EMBEDDING_DIM = self.config.getint('models', 'embedding_dim', fallback=1024)
+
+        # 重排序模型配置。rerank_url 非空 → 走远程 /rerank（Cohere 兼容返回）；
+        # 留空 → 用本地 bge-reranker-large。
+        self.RERANK_URL = self.config.get('models', 'rerank_url', fallback='')
+        self.RERANK_API_KEY = self.config.get('models', 'rerank_api_key', fallback='')
+        self.RERANK_MODEL = self.config.get('models', 'rerank_model', fallback='BAAI/bge-reranker-v2-m3')
+
         # 其他配置
         self.CUSTOMER_SERVICE_PHONE = self.config.get('app', 'customer_service_phone', fallback='12345678')
         # valid_sources 存的是逗号分隔字符串，转成真正可迭代的列表，

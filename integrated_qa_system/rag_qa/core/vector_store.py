@@ -11,6 +11,7 @@ from sentence_transformers import CrossEncoder
 # 导入 hashlib 模块，用于生成唯一 ID 的哈希值
 import hashlib
 import sys, os
+import requests
 # 路径设置：先把 core、rag_qa 和项目根目录加入 sys.path，再导入项目内模块。
 # 否则从其他目录启动时 `from document_processor import *` 和 `from base import logger` 会 ImportError。
 current_dir = os.path.dirname(os.path.abspath(__file__))  # core/
@@ -24,6 +25,59 @@ from base import logger, Config
 
 
 conf = Config()
+
+
+class RemoteEmbeddings:
+    """远程 OpenAI 兼容 /embeddings 嵌入（SiliconFlow 等，如 BAAI/bge-m3）。
+
+    与本地 BGEM3 保持同一调用面：可调用，返回 {"dense": ..., "sparse": ...}。
+    远程接口只出稠密向量，sparse 恒为 None（下游据此降级稀疏检索）。
+    """
+
+    def __init__(self, url, api_key, model, dim):
+        from openai import OpenAI
+        self.client = OpenAI(api_key=api_key, base_url=url)
+        self.model = model
+        self.dim = dim
+
+    def __call__(self, texts):
+        import numpy as np
+        resp = self.client.embeddings.create(model=self.model, input=texts)
+        # 按输入顺序排好（OpenAI 返回 data 顺序稳定，仍按 index 排序更稳妥）
+        ordered = sorted(resp.data, key=lambda x: x.index)
+        dense = np.array([d.embedding for d in ordered], dtype=np.float32)
+        return {"dense": dense, "sparse": None}
+
+
+class RemoteReranker:
+    """远程 /rerank 重排序（Cohere 兼容返回：results[].relevance_score）。
+
+    与本地 CrossEncoder.predict(pairs) 同签名：predict([(q, doc), ...]) → [score, ...]。
+    """
+
+    def __init__(self, url, api_key, model):
+        self.url = url.rstrip("/")
+        self.api_key = api_key
+        self.model = model
+
+    def predict(self, pairs):
+        if not pairs:
+            return []
+        query = pairs[0][0]
+        documents = [doc for _, doc in pairs]
+        resp = requests.post(
+            f"{self.url}/rerank",
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            json={"model": self.model, "query": query,
+                  "documents": documents, "top_k": len(documents)},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        scores = [0.0] * len(documents)
+        for r in data.get("results", []):
+            scores[r["index"]] = r.get("relevance_score", 0.0)
+        return scores
 
 
 # core/vector_store.py
@@ -49,15 +103,32 @@ class VectorStore:
         self.device ='cuda' if torch.cuda.is_available() else 'cpu'
         # 日志提醒使用的是什么设备
         self.logger.info(f"使用设置：{self.device}")
-        # 初始化 BGE-Reranker 模型，用于重排序检索结果
-        reranker_path = os.path.join(rag_qa_path, 'bge-reranker-large')
-        # print(f'reranker_path--》{reranker_path}')
-        self.reranker = CrossEncoder(reranker_path, device=self.device)
-        # 初始化 BGE-M3 嵌入函数，使用 CPU 设备，不启用 FP16
-        m3_path = os.path.join(rag_qa_path, 'bge-m3')
-        self.embedding_function = BGEM3EmbeddingFunction(model_name_or_path=m3_path, use_fp16=(self.device == 'cuda'), device=self.device)
-        # 获取稠密向量的维度# 1024
-        self.dense_dim = self.embedding_function.dim["dense"]
+
+        # ---- 嵌入模型：配了远程 url 走 API，否则用本地 bge-m3 ----
+        if conf.EMBEDDING_URL:
+            self.embedding_function = RemoteEmbeddings(
+                conf.EMBEDDING_URL, conf.EMBEDDING_API_KEY,
+                conf.EMBEDDING_MODEL, conf.EMBEDDING_DIM)
+            self.has_sparse = False   # 远程只出稠密向量
+            self.dense_dim = conf.EMBEDDING_DIM
+            self.logger.info(f"嵌入模型：远程 {conf.EMBEDDING_MODEL}（{conf.EMBEDDING_URL}，仅稠密）")
+        else:
+            m3_path = os.path.join(rag_qa_path, 'bge-m3')
+            self.embedding_function = BGEM3EmbeddingFunction(
+                model_name_or_path=m3_path, use_fp16=(self.device == 'cuda'), device=self.device)
+            self.has_sparse = True
+            self.dense_dim = self.embedding_function.dim["dense"]
+            self.logger.info(f"嵌入模型：本地 bge-m3（稠密+稀疏）")
+
+        # ---- 重排序模型：配了远程 url 走 API，否则用本地 bge-reranker-large ----
+        if conf.RERANK_URL:
+            self.reranker = RemoteReranker(conf.RERANK_URL, conf.RERANK_API_KEY, conf.RERANK_MODEL)
+            self.logger.info(f"重排序：远程 {conf.RERANK_MODEL}")
+        else:
+            reranker_path = os.path.join(rag_qa_path, 'bge-reranker-large')
+            self.reranker = CrossEncoder(reranker_path, device=self.device)
+            self.logger.info("重排序：本地 bge-reranker-large")
+
         # 初始化 Milvus 客户端，连接到指定主机和数据库
         self.client = MilvusClient(uri=f"http://{self.host}:{self.port}", db_name=self.database)
         # 调用方法创建或加载 Milvus 集合
@@ -150,16 +221,18 @@ class VectorStore:
             # print(f'text_hash--》{type(text_hash)}')
             # 初始化一个稀疏向量的字典（Milvus要求存储稀疏向量的格式）
             sparse_vector = {}
-            # BGE-M3 的稀疏向量是 scipy csr_array（形状 n_docs x vocab）。
-            # 新版 scipy 的 csr_array 没有 .getrow() 方法，单行索引又会返回类型不稳定的
-            # coo_array，因此这里直接用 CSR 的 indptr/indices/data 三件套切出第 i 行，
-            # 兼容新旧版本 scipy。
-            sp_indices = embeddings["sparse"].indices
-            sp_indptr = embeddings["sparse"].indptr
-            sp_values = embeddings["sparse"].data
-            # 第 i 行的非零列下标位于 [indptr[i], indptr[i+1]) 区间
-            for pos in range(sp_indptr[i], sp_indptr[i + 1]):
-                sparse_vector[sp_indices[pos]] = sp_values[pos]
+            # 远程嵌入只出稠密向量（sparse 为 None），此时稀疏字段存空，检索端据此降级
+            if embeddings["sparse"] is not None:
+                # BGE-M3 的稀疏向量是 scipy csr_array（形状 n_docs x vocab）。
+                # 新版 scipy 的 csr_array 没有 .getrow() 方法，单行索引又会返回类型不稳定的
+                # coo_array，因此这里直接用 CSR 的 indptr/indices/data 三件套切出第 i 行，
+                # 兼容新旧版本 scipy。
+                sp_indices = embeddings["sparse"].indices
+                sp_indptr = embeddings["sparse"].indptr
+                sp_values = embeddings["sparse"].data
+                # 第 i 行的非零列下标位于 [indptr[i], indptr[i+1]) 区间
+                for pos in range(sp_indptr[i], sp_indptr[i + 1]):
+                    sparse_vector[sp_indices[pos]] = sp_values[pos]
             # print(f'sparse_vector--》{sparse_vector}')
             # print(f'sparse_vector--》{len(sparse_vector)}')
             # print(embeddings["dense"][i])
@@ -193,20 +266,8 @@ class VectorStore:
         # 获取查询的稠密向量
         dense_query_vector = query_embeddings["dense"][0]
         # print(f'dense_query_vector--》{dense_query_vector.shape}')
-        # 初始化查询的稀疏向量字典
-        sparse_query_vector = {}
-        # 查询稀疏向量是 scipy csr_array（形状 1 x vocab），新版 scipy 没有 .getrow()，
-        # 查询只有一行，直接用 CSR 的 indices/data 属性取全部非零值即可。
-        indices = query_embeddings["sparse"].indices
-        # 获取稀疏向量的非零值
-        values = query_embeddings["sparse"].data
-        # 将索引和值配对，填充稀疏向量字典
-        for idx, value in zip(indices, values):
-            sparse_query_vector[idx] = value
-        # print(f'sparse_query_vector-->{sparse_query_vector}')
         # 初始化过滤表达式，默认不过滤
         filter_expr = f"source == '{source_filter}'" if source_filter else ""
-        # print(f'filter_expr--》{filter_expr}')
         # 创建稠密向量搜索请求
         dense_request = AnnSearchRequest(
             data=[dense_query_vector],
@@ -215,21 +276,38 @@ class VectorStore:
             limit=k,
             expr=filter_expr
         )
-        # 创建稀疏向量搜索请求
-        sparse_request = AnnSearchRequest(
-            data=[sparse_query_vector],
-            anns_field="sparse_vector",
-            param={"metric_type": "IP", "params": {}},
-            limit=k,
-            expr=filter_expr
-        )
-
-        # 创建加权排序器，稀疏向量权重 0.7，稠密向量权重 1.0
-        ranker = WeightedRanker(1.0, 0.7)
+        # sparse 是否为 None 决定是否走「稠密+稀疏」混合：
+        # 本地 bge-m3 有稀疏向量 → 全量混合；远程嵌入只出稠密 → 退化为纯稠密检索。
+        has_sparse = query_embeddings["sparse"] is not None
+        if has_sparse:
+            # 初始化查询的稀疏向量字典
+            sparse_query_vector = {}
+            # 查询稀疏向量是 scipy csr_array（形状 1 x vocab），新版 scipy 没有 .getrow()，
+            # 查询只有一行，直接用 CSR 的 indices/data 属性取全部非零值即可。
+            indices = query_embeddings["sparse"].indices
+            values = query_embeddings["sparse"].data
+            # 将索引和值配对，填充稀疏向量字典
+            for idx, value in zip(indices, values):
+                sparse_query_vector[idx] = value
+            # 创建稀疏向量搜索请求
+            sparse_request = AnnSearchRequest(
+                data=[sparse_query_vector],
+                anns_field="sparse_vector",
+                param={"metric_type": "IP", "params": {}},
+                limit=k,
+                expr=filter_expr
+            )
+            # 加权排序器：稀疏 0.7，稠密 1.0
+            ranker = WeightedRanker(1.0, 0.7)
+            reqs = [dense_request, sparse_request]
+        else:
+            # 仅稠密检索：单路搜索
+            ranker = WeightedRanker(1.0)
+            reqs = [dense_request]
         # 执行混合搜索，返回 Top-K 结果
         results = self.client.hybrid_search(
             collection_name=self.collection_name,
-            reqs=[dense_request, sparse_request],
+            reqs=reqs,
             ranker=ranker,
             limit=k,
             output_fields=["text", "parent_id", "parent_content", "source", "doc_id", "title", "timestamp"]
