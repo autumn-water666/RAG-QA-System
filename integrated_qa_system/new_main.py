@@ -240,7 +240,7 @@ class IntegratedQASystem:
         # 获取对话历史，若无 session_id 则返回空列表
         history = self.get_session_history(session_id) if session_id else []
         # 执行 BM25 搜索，获取答案和是否需要 RAG 的标志
-        answer, need_rag = self.bm25_search.search(query, threshold=0.85)
+        answer, need_rag = self.bm25_search.search(query, threshold=self.config.BM25_THRESHOLD)
         if answer:
             # 如果找到可靠答案，记录答案到日志
             self.logger.info(f"MySQL答案: {answer}")

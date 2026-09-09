@@ -126,7 +126,7 @@ async def query(request: QueryRequest):
             "processing_time": time.time() - start_time
         }
     # 执行 BM25 搜索
-    answer, need_rag = qa_system.bm25_search.search(request.query, threshold=0.85)
+    answer, need_rag = qa_system.bm25_search.search(request.query, threshold=qa_system.config.BM25_THRESHOLD)
     if need_rag:
         # 需要 RAG，提示使用 WebSocket
         return {

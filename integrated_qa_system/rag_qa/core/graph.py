@@ -113,7 +113,7 @@ def build_qa_graph(rag_system, bm25_search=None):
         if bm25_search is None:
             state["need_rag"] = True
             return state
-        answer, need_rag = bm25_search.search(query, threshold=0.85)
+        answer, need_rag = bm25_search.search(query, threshold=conf.BM25_THRESHOLD)
         state["bm25_answer"] = answer
         state["need_rag"] = need_rag
         logger.info(f"[graph] BM25 用规范查询检索: '{query}'")

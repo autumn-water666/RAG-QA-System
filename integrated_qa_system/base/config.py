@@ -67,6 +67,10 @@ class Config():
         self.RETRIEVAL_K = self.config.getint('retrieval', 'retrieval_k', fallback=20)
         # 重排序后返回的父块数量
         self.CANDIDATE_M = self.config.getint('retrieval', 'candidate_m', fallback=5)
+        # BM25 快速命中的置信度阈值(softmax 归一化后得分)。
+        # 设高(默认0.92)= 只有非常高置信的标准问答才走快速直答，其余自然落到完整 RAG，
+        # 兼顾"保留快通道"与高准确：调高降低误回标准答案的概率。
+        self.BM25_THRESHOLD = self.config.getfloat('retrieval', 'bm25_threshold', fallback=0.92)
 
         # LLM 配置
         self.LLM_MODEL_NAME = self.config.get('llm', 'model_name', fallback='mimo-v2.5')
