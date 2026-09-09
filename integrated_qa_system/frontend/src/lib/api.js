@@ -53,6 +53,16 @@ export const api = {
     return jfetch('/api/kb/documents', { method: 'POST', body: fd })
   },
   deleteDocument: (docId) => jfetch(`/api/kb/documents/${docId}`, { method: 'DELETE' }), // -> { status }
+  rebuildIndex: () => jfetch('/api/kb/rebuild', { method: 'POST' }), // -> { status }
+
+  // ---- 设置 ----
+  getIntentClassify: async () => (await jfetch('/api/settings/intent')).use_intent_classify, // -> bool
+  setIntentClassify: async (enabled) =>
+    (await jfetch('/api/settings/intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    })).use_intent_classify, // -> bool
 
   // ---- 健康 ----
   health: async () => (await jfetch('/health')).status, // -> 'healthy'

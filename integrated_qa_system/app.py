@@ -268,6 +268,22 @@ async def list_sessions():
     return {"sessions": qa_system.list_sessions()}
 
 
+# 意图识别开关：读取当前状态（true=按通用/专业路由，false=一律走检索）
+@app.get("/api/settings/intent")
+async def get_intent_classify():
+    return {"use_intent_classify": qa_system.get_intent_classify()}
+
+
+# 意图识别开关：运行时切换并重新编译编排图，立即生效
+@app.post("/api/settings/intent")
+async def set_intent_classify(payload: dict):
+    enabled = payload.get("enabled")
+    if not isinstance(enabled, bool):
+        raise HTTPException(status_code=400, detail="enabled 必须是布尔值")
+    qa_system.set_intent_classify(enabled)
+    return {"use_intent_classify": qa_system.get_intent_classify()}
+
+
 def _validate_subject(subject: Optional[str]) -> Optional[str]:
     """校验学科过滤参数，非法值抛 400，None 原样返回。"""
     if subject is None:

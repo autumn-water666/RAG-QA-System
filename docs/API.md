@@ -74,6 +74,8 @@ npm run dev
 | DELETE | `/api/kb/documents/{doc_id}` | 已有 | 删除文档并下索引 |
 | GET | `/api/kb/search` | 已有 | 库内全文/语义搜索 |
 | POST | `/api/kb/rebuild` | 已有 | 重建知识库索引 |
+| GET | `/api/settings/intent` | 已有 | 读取意图识别开关 |
+| POST | `/api/settings/intent` | 已有 | 运行时切换意图识别开关 |
 | POST | `/api/sessions/{sid}/feedback` | 规划 | 答案反馈 👍/👎 |
 
 ---
@@ -210,6 +212,30 @@ url      `#/kb/${doc.metadata["parent_id"]}`
 ```
 前端收到 `end.sources` 即挂在当前助手消息上，渲染 `[N]` 角标 + 「参考来源」卡片。
 
+### 5.9 GET `/api/settings/intent`
+读取意图识别开关当前状态。
+
+**响应** `200`
+```json
+{ "use_intent_classify": true }
+```
+> 对应 App 层 `IntegratedQASystem.get_intent_classify()` → 图模块 `conf.USE_INTENT_CLASSIFY`。
+
+### 5.10 POST `/api/settings/intent`
+运行时切换意图识别开关，立即生效（改图模块配置并重编译 LangGraph 编排图）。
+
+**请求体**
+```json
+{ "enabled": false }
+```
+
+**响应** `200`，返回切换后状态
+```json
+{ "use_intent_classify": false }
+```
+
+**错误** `400`：`enabled` 非布尔值。
+
 ---
 
 ## 6. 待开发知识库接口（规划，URL 占位）
@@ -255,6 +281,10 @@ url      `#/kb/${doc.metadata["parent_id"]}`
 | `GET /api/kb/documents/{id}` | `api.getDocument(docId)` → `DocDetail` |
 | `GET /api/kb/search` | `api.kbSearch(q, subject)` → `Result[]` |
 | `DELETE /api/history/{id}` | `api.clearHistory(sid)` |
+| `DELETE /api/kb/documents/{id}` | `api.deleteDocument(docId)` |
+| `POST /api/kb/rebuild` | `api.rebuildIndex()` |
+| `GET /api/settings/intent` | `api.getIntentClassify()` → `bool` |
+| `POST /api/settings/intent` | `api.setIntentClassify(enabled)` → `bool` |
 | `WS /api/stream` | `api.wsStreamUrl()` → 连接串 |
 
 ---
@@ -265,4 +295,5 @@ url      `#/kb/${doc.metadata["parent_id"]}`
 2. ✅ `GET /api/kb/documents` + `GET /api/kb/documents/{id}`（知识库浏览 + 文档详情，已上线）+ `GET /api/kb/search`（库内搜索）
 3. ✅ `POST /api/kb/documents`（上传/增量索引）+ `DELETE /api/kb/documents/{id}`（删除）+ `POST /api/kb/rebuild`（重建，已上线）
 4. ✅ `GET /api/kb/search`（库内搜索）
-5. `POST /api/.../feedback`（答案 👍/👎 反馈）
+5. ✅ `GET/POST /api/settings/intent`（前端意图识别开关，运行时重编译，已上线）
+6. `POST /api/.../feedback`（答案 👍/👎 反馈）

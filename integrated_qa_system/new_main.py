@@ -5,6 +5,8 @@ from mysql_qa import MySQLClient, RedisClient, BM25Search
 from rag_qa import VectorStore, RAGSystem
 # 导入 LangGraph 编排层，用于把路由/检索/生成流程化
 from rag_qa.core.graph import build_qa_graph, _stream_from_compiled
+# 图模块的 conf（含 USE_INTENT_CLASSIFY），运行时开关要改它并重编译图才即时生效
+import rag_qa.core.graph as _qgraph
 # 导入配置和日志工具，用于系统配置和日志记录
 from base import logger, Config
 # 导入 OpenAI 客户端，用于调用 DashScope API
@@ -44,6 +46,20 @@ class IntegratedQASystem:
         self.init_conversation_table()
         # 构建 LangGraph 编排图（复用上面初始化好的 RAGSystem 与 BM25Search）
         self.qa_graph = build_qa_graph(self.rag_system, self.bm25_search)
+
+    def get_intent_classify(self) -> bool:
+        """读取当前意图识别开关（true=按通用/专业路由，false=一律走检索）。"""
+        return bool(_qgraph.conf.USE_INTENT_CLASSIFY)
+
+    def set_intent_classify(self, enabled: bool):
+        """运行时切换意图识别开关：改图模块配置并重编译编排图使其即时生效。"""
+        _qgraph.conf.USE_INTENT_CLASSIFY = bool(enabled)
+        try:
+            self.qa_graph = build_qa_graph(self.rag_system, self.bm25_search)
+            self.logger.info(f"[settings] 意图识别开关 → {bool(enabled)}（图已重编译）")
+        except Exception as e:
+            self.logger.error(f"[settings] 重编译编排图失败: {e}")
+            raise
 
     def init_conversation_table(self):
         """初始化MySQL中的conversations表，用于存储对话历史"""
