@@ -88,6 +88,9 @@ class Config():
 
         # 其他配置
         self.CUSTOMER_SERVICE_PHONE = self.config.get('app', 'customer_service_phone', fallback='12345678')
+        # 意图识别（LangGraph classify 节点）开关：true=按"通用知识/专业咨询"路由；
+        # false=跳过分类，所有问题一律走检索(RAG)。默认开启
+        self.USE_INTENT_CLASSIFY = self.config.getboolean('app', 'use_intent_classify', fallback=True)
         # valid_sources 存的是逗号分隔字符串，转成真正可迭代的列表，
         # 否则下游 迭代/join/成员判断 都会拿整串字符串当列表用
         raw_sources = self.config.get('app', 'valid_sources', fallback='')

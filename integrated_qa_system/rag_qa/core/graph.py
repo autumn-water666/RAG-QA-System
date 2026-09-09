@@ -89,6 +89,9 @@ def build_qa_graph(rag_system, bm25_search=None):
         return state
 
     def bm25(state):
+        # 意图识别关闭时 classify 节点被移除，直接进到这里，category 未初始化。
+        # 兜底按"专业咨询"处理（会继续走检索），保证 generate 分支逻辑稳定。
+        state.setdefault("category", "专业咨询")
         if bm25_search is None:
             state["need_rag"] = True
             return state
@@ -164,19 +167,26 @@ def build_qa_graph(rag_system, bm25_search=None):
         return "retrieve" if state.get("need_rag", True) else "set_not_found"
 
     # ---- 组图 ----
+    # 意图识别开关：conf.USE_INTENT_CLASSIFY=True 走"通用知识/专业咨询" classify 路由；
+    # 为 False 则不注册 classify 节点、START 直达 bm25，所有问题一律走检索(RAG)。
     graph = StateGraph(QState)
-    graph.add_node("classify", classify)
+    if conf.USE_INTENT_CLASSIFY:
+        graph.add_node("classify", classify)
+        graph.add_edge(START, "classify")
     graph.add_node("bm25", bm25)
     graph.add_node("retrieve", retrieve)
     graph.add_node("generate", generate)
     graph.add_node("set_bm25_answer", set_bm25_answer)
     graph.add_node("set_not_found", set_not_found)
 
-    graph.add_edge(START, "classify")
-    graph.add_conditional_edges(
-        "classify", route_after_classify,
-        {"generate": "generate", "bm25": "bm25"}
-    )
+    if conf.USE_INTENT_CLASSIFY:
+        graph.add_conditional_edges(
+            "classify", route_after_classify,
+            {"generate": "generate", "bm25": "bm25"}
+        )
+    else:
+        # 关闭意图识别：跳过分类，统一从 BM25 快速命中开始，未命中则检索
+        graph.add_edge(START, "bm25")
     graph.add_conditional_edges(
         "bm25", route_after_bm25,
         {"set_bm25_answer": "set_bm25_answer",
