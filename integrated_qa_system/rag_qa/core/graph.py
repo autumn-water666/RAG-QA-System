@@ -6,18 +6,20 @@
 显式化为一个 StateGraph 状态机：
 
     START → classify ──通用知识──→ generate ──→ END
-                     └─专业咨询──→ bm25 ──有答案──→ set_bm25_answer ──→ END
-                                    │
-                                  needs_rag
-                                    │
-                                    ├──需要→ retrieve ──→ generate ──→ END
-                                    └──不需要→ set_not_found ──→ END
+                     └─专业咨询──→ analyze ──→ bm25 ──有答案──→ generate(LLM仲裁标准答案) ──→ END
+                                                │
+                                              needs_rag（未命中）
+                                                │
+                                                ├──需要→ retrieve ──→ generate ──→ END
+                                                └──不需要→ set_not_found ──→ END
 
 节点只复用现有的完成模块（QueryClassifier / BM25Search / StrategySelector /
 VectorStore 混合检索 / RAGPrompts），不重写任何检索与生成逻辑：
 - classify       → rag_system.query_classifier
-- bm25           → bm25_search.search（快速命中直答）
-- retrieve       → rag_system.strategy_selector + retrieve_and_merge
+- analyze        → strategy_selector.analyze（问题解析前置：一次 LLM 产出规范查询 + 检索策略，
+                    BM25 与向量检索都用规范查询，口语化问题也能命中）
+- bm25           → bm25_search.search(规范查询)（命中时标准答案作为上下文交 LLM 仲裁，不再直答）
+- retrieve       → rag_system.retrieve_and_merge（用 analyze 预设的策略，不重复调 LLM）
 - generate       → rag_system.rag_prompt + rag_system.llm
 """
 import os
@@ -48,9 +50,10 @@ class QState(TypedDict):
     source_filter: Optional[str]
     history: Optional[List[dict]]          # [{"question":..., "answer":...}, ...]
     category: str                          # 通用知识 | 专业咨询
+    search_query: Optional[str]            # 问题解析后的规范查询（供 BM25/检索）
     bm25_answer: Optional[str]             # BM25 快速命中的答案
     need_rag: bool                         # BM25 判定是否需要 RAG
-    strategy: Optional[str]                # 检索策略名
+    strategy: Optional[str]                # 检索策略名（analyze 阶段选出）
     context_docs: List                     # 检索到的父文档
     answer: str                            # 最终答案
 
@@ -88,25 +91,41 @@ def build_qa_graph(rag_system, bm25_search=None):
         logger.info(f"[graph] 分类结果: {state['category']}")
         return state
 
+    def analyze(state):
+        # 问题解析前置：一次 LLM 调用产出"规范查询 + 检索策略"，放在 BM25/检索之前，
+        # 让 BM25 用规范化后的好问题匹配，口语化/指代不清的查询也能命中。
+        query = state["query"]
+        if strategy_selector is not None:
+            search_query, strategy = strategy_selector.analyze(query)
+        else:
+            search_query, strategy = query, None
+        state["search_query"] = search_query or query
+        state["strategy"] = strategy
+        logger.info(f"[graph] 问题解析: '{query}' -> 规范查询 '{state['search_query']}'，策略 '{strategy}'")
+        return state
+
     def bm25(state):
-        # 意图识别关闭时 classify 节点被移除，直接进到这里，category 未初始化。
+        # 意图识别关闭时 classify/analyze 节点被移除，直接进到这里，category 未初始化。
         # 兜底按"专业咨询"处理（会继续走检索），保证 generate 分支逻辑稳定。
         state.setdefault("category", "专业咨询")
+        # 优先用 analyze 阶段产出的规范查询；无（意图识别关闭或解析失败）则回退原始查询。
+        query = state.get("search_query") or state["query"]
         if bm25_search is None:
             state["need_rag"] = True
             return state
-        answer, need_rag = bm25_search.search(state["query"], threshold=0.85)
+        answer, need_rag = bm25_search.search(query, threshold=0.85)
         state["bm25_answer"] = answer
         state["need_rag"] = need_rag
+        logger.info(f"[graph] BM25 用规范查询检索: '{query}'")
         return state
 
     def retrieve(state):
-        query = state["query"]
+        # BM25 未命中才走到此处；用 analyze 解析出的规范查询 + 预设策略检索，
+        # 不再重复调用 LLM 选策略（retrieve_and_merge 收到 strategy 就不会再选）。
+        query = state.get("search_query") or state["query"]
         src_filter = state["source_filter"]
-        strategy = (strategy_selector.select_strategy(query)
-                    if strategy_selector else "直接检索")
+        strategy = state.get("strategy") or "直接检索"
         docs = rag_system.retrieve_and_merge(query, source_filter=src_filter, strategy=strategy)
-        state["strategy"] = strategy
         state["context_docs"] = docs
         logger.info(f"[graph] 策略 '{strategy}' 检索到 {len(docs)} 个文档")
         return state
@@ -117,6 +136,14 @@ def build_qa_graph(rag_system, bm25_search=None):
             # 通用知识：不检索，直接用历史（若有）当上下文
             context = hc
             logger.info("[graph] 通用知识，直接调用 LLM")
+        elif state.get("bm25_answer"):
+            # BM25 命中：标准答案降级为"证据上下文"交给 LLM 仲裁，
+            # 不再硬返回，由 LLM 判断采纳还是纠偏/拒答（提升准确率）
+            context = (f"数据库标准答案（可能已过时或不相关，请核对其能正确回答用户问题后再采用，"
+                       f"不符则依据你的知识纠正或回复无法回答）:\n{state['bm25_answer']}")
+            if hc:
+                context = f"对话历史:\n{hc}\n\n{context}"
+            logger.info("[graph] BM25 命中，交由 LLM 仲裁")
         else:
             # 专业咨询：到这里说明已经 retrieve 过，拼检索上下文
             docs = state["context_docs"]
@@ -148,10 +175,6 @@ def build_qa_graph(rag_system, bm25_search=None):
         state["answer"] = full
         return state
 
-    def set_bm25_answer(state):
-        state["answer"] = state["bm25_answer"]
-        return state
-
     def set_not_found(state):
         state["answer"] = NOT_FOUND_ANSWER
         return state
@@ -159,11 +182,13 @@ def build_qa_graph(rag_system, bm25_search=None):
     # ---- 条件路由 ----
 
     def route_after_classify(state):
-        return "generate" if state["category"] == "通用知识" else "bm25"
+        return "generate" if state["category"] == "通用知识" else "analyze"
 
     def route_after_bm25(state):
         if state.get("bm25_answer"):
-            return "set_bm25_answer"
+            # BM25 命中不再硬返回，改走 generate：标准答案降级为上下文，
+            # 由 LLM 做最终仲裁（采纳 / 纠偏 / 拒答），提升准确率。
+            return "generate"
         return "retrieve" if state.get("need_rag", True) else "set_not_found"
 
     # ---- 组图 ----
@@ -172,30 +197,30 @@ def build_qa_graph(rag_system, bm25_search=None):
     graph = StateGraph(QState)
     if conf.USE_INTENT_CLASSIFY:
         graph.add_node("classify", classify)
+        graph.add_node("analyze", analyze)   # 问题解析：规范查询 + 选策略，先于 BM25/检索
         graph.add_edge(START, "classify")
+        graph.add_edge("analyze", "bm25")
     graph.add_node("bm25", bm25)
     graph.add_node("retrieve", retrieve)
     graph.add_node("generate", generate)
-    graph.add_node("set_bm25_answer", set_bm25_answer)
     graph.add_node("set_not_found", set_not_found)
 
     if conf.USE_INTENT_CLASSIFY:
         graph.add_conditional_edges(
             "classify", route_after_classify,
-            {"generate": "generate", "bm25": "bm25"}
+            {"generate": "generate", "analyze": "analyze"}
         )
     else:
-        # 关闭意图识别：跳过分类，统一从 BM25 快速命中开始，未命中则检索
+        # 关闭意图识别：跳过分类/解析，统一从 BM25 快速命中开始，未命中则检索
         graph.add_edge(START, "bm25")
     graph.add_conditional_edges(
         "bm25", route_after_bm25,
-        {"set_bm25_answer": "set_bm25_answer",
+        {"generate": "generate",
          "retrieve": "retrieve",
          "set_not_found": "set_not_found"}
     )
     graph.add_edge("retrieve", "generate")
     graph.add_edge("generate", END)
-    graph.add_edge("set_bm25_answer", END)
     graph.add_edge("set_not_found", END)
 
     return graph.compile()
@@ -254,7 +279,7 @@ def _stream_from_compiled(compiled, query, source_filter=None, history=None):
     - 全部结束产出 ("", True, sources) 作为结束标记
     """
     inp = _to_state_input(query, source_filter, history)
-    terminal_nodes = {"set_bm25_answer", "set_not_found"}
+    terminal_nodes = {"set_not_found"}
     context_docs = []
     saw_token = False
     for mode, chunk in compiled.stream(inp, stream_mode=["updates", "custom"]):

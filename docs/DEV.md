@@ -18,7 +18,7 @@ integrated_qa_system/
   mysql_qa/          MySQL 会话历史 + Redis + BM25（rank_bm25）
   rag_qa/
     core/
-      graph.py       LangGraph 编排层（classify/bm25/retrieve/generate）
+      graph.py       LangGraph 编排层（classify/analyze/bm25/retrieve/generate）
       rag_system.py  检索合并 + LLM 生成
       vector_store.py BGE-M3 混合检索 + Reranker + Milvus
       ...
@@ -53,10 +53,15 @@ npm run build        # 产物 → static/，刷新浏览器即可
 ```
 UI 提问 ──ws──▶ /api/stream
   ▶ LangGraph: classify ──通用知识──▶ generate
-                          └大专业咨询──▶ bm25 ──命中──▶ 直答
-                                         │ 需RAG
-                                         └▶ retrieve(混合召回)──▶ generate
-  ▶ end 帧(规划带 sources 引用溯源) ──▶ 前端渲染
+                          └大专业咨询──▶ analyze(问题解析: 规范查询+选策略)
+                                          └▶ bm25 ──命中──▶ generate(LLM仲裁标准答案)
+                                                   │ 未命中需RAG
+                                                   └▶ retrieve(混合召回，用规范查询+预设策略)──▶ generate
+  ▶ end 帧(带 sources 引用溯源) ──▶ 前端渲染
+
+说明：
+- analyze 阶段把口语化问题规范化成规范查询再喂给 BM25/检索，提升命中率。
+- BM25 命中不再硬返回，标准答案作为上下文交给 generate 里的 LLM 仲裁（采纳/纠偏/拒答）。
 ```
 
 - 会话写 MySQL `conversations` 表，按 `session_id` 隔离。

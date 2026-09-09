@@ -95,6 +95,67 @@ class StrategySelector:
         logger.info(f"为查询 '{query}' 选择的检索策略：{strategy}")
         return strategy
 
+    def _get_analyze_prompt(self):
+        #   定义私有方法，获取"问题解析" Prompt 模板
+        #   一次调用同时产出：规范查询（去口语化、纠错、补全，供 BM25/检索使用）+
+        #   向量检索策略（从四种策略中选一个），提升 BM25 对口语化问题的命中率。
+        return PromptTemplate(
+            template="""
+            你是一个专业的问题解析与检索规划助手。给定用户的原始查询，你需要做两件事：
+
+            任务一：把"规范查询"规范化。
+            - 把口语化、含口头禅/错别字/指代不清的查询，改写成规范、完整、适合检索的标准查询。
+            - 保留所有技术术语、学科关键词和实体，不要改变查询的本意。
+            - 若查询本身已经规范，原样返回即可。
+            任务二：从以下四种检索增强策略中选择一个最适合向量检索的策略。
+            1. 直接检索：查询意图明确，直接检索特定信息。
+            2. 假设问题检索（HyDE）：查询抽象，直接检索效果不佳。
+            3. 子查询检索：查询涉及多个实体/方面，需要拆分检索再合并。
+            4. 回溯问题检索：查询复杂/口语化，需要简化成更基础的问题再检索。
+
+            用户原始查询: {query}
+
+            请严格按以下两行输出，不要输出其他任何内容：
+            规范查询: <改写后的标准查询>
+            检索策略: <四种策略之一，如 直接检索>
+            """
+            ,
+            input_variables=["query"],
+        )
+
+    #   定义方法：一次 LLM 调用完成"问题解析"——规范化查询 + 选择向量检索策略。
+    #   规范化后的查询用于 BM25 快速命中与向量检索，解决口语化问题匹配不到的问题；
+    #   返回 (search_query, strategy)，失败时回退 (原始查询, "直接检索")。
+    def analyze(self, query):
+        try:
+            text = self.call_dashscope(self._get_analyze_prompt().format(query=query))
+            search_query, strategy = query, "直接检索"
+            for line in (text or "").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if "规范查询" in line:
+                    seg = line.split(":", 1)[-1].strip()
+                    if seg:
+                        search_query = seg
+                elif "检索策略" in line:
+                    seg = line.split(":", 1)[-1].strip().lower()
+                    # 归一化策略名到四种之一，无法识别一律按"直接检索"
+                    if "回溯" in seg:
+                        strategy = "回溯问题检索"
+                    elif "子查询" in seg:
+                        strategy = "子查询检索"
+                    elif "假设" in seg or "hyde" in seg:
+                        strategy = "假设问题检索"
+                    else:
+                        strategy = "直接检索"
+            search_query = search_query.strip() or query
+            logger.info(f"问题解析：'{query}' -> 规范查询 '{search_query}'，策略 '{strategy}'")
+            return search_query, strategy
+        except Exception as e:
+            logger.error(f"问题解析失败，回退原始查询: {e}")
+            return query, "直接检索"
+
 if __name__ == '__main__':
     ss = StrategySelector()
     ss.select_strategy('你好吗')
