@@ -74,8 +74,8 @@ class Config():
 
         # LLM 配置
         self.LLM_MODEL_NAME = self.config.get('llm', 'model_name', fallback='mimo-v2.5')
-        self.DASHSCOPE_BASE_URL = self.config.get('llm', 'dashscope_base_url', fallback='https://api.xiaomimimo.com/v1')
-        self.DASHSCOPE_API_KEY = self.config.get('llm', 'dashscope_api_key', fallback='no-key')
+        self.LLM_BASE_URL = self.config.get('llm', 'llm_base_url', fallback='https://api.xiaomimimo.com/v1')
+        self.LLM_API_KEY = self.config.get('llm', 'llm_api_key', fallback='no-key')
 
         # 嵌入模型配置（向量化）。embedding_url 非空 → 走远程 OpenAI 兼容 /embeddings；
         # 留空 → 用本地 bge-m3。远程接口只返回稠密向量，稀疏检索随之降级（见 vector_store）。

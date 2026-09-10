@@ -20,14 +20,14 @@ class StrategySelector:
     def __init__(self):
         # 初始化 OpenAI 客户端
         self.client = OpenAI(
-            api_key=Config().DASHSCOPE_API_KEY,
-            base_url=Config().DASHSCOPE_BASE_URL
+            api_key=Config().LLM_API_KEY,
+            base_url=Config().LLM_BASE_URL
                              )
         # 获取策略选择提示模板
         self.strategy_prompt_template = self._get_strategy_prompt()
 
-    def call_dashscope(self, prompt):
-        # 调用 DashScope API
+    def call_llm(self, prompt):
+        # 调用 LLM API
         try:
             # 创建聊天完成请求
             completion = self.client.chat.completions.create(
@@ -42,7 +42,7 @@ class StrategySelector:
             return completion.choices[0].message.content if completion.choices else "直接检索"
         except Exception as e:
             # 记录 API 调用失败
-            logger.error(f"DashScope API 调用失败: {e}")
+            logger.error(f"LLM API 调用失败: {e}")
             # 默认返回直接检索
             return "直接检索"
 
@@ -91,7 +91,7 @@ class StrategySelector:
     #   定义方法，选择检索策略
     def select_strategy(self, query):
         #   调用 LLM 获取检索策略
-        strategy = self.call_dashscope(self.strategy_prompt_template.format(query=query)).strip()
+        strategy = self.call_llm(self.strategy_prompt_template.format(query=query)).strip()
         logger.info(f"为查询 '{query}' 选择的检索策略：{strategy}")
         return strategy
 
@@ -128,7 +128,7 @@ class StrategySelector:
     #   返回 (search_query, strategy)，失败时回退 (原始查询, "直接检索")。
     def analyze(self, query):
         try:
-            text = self.call_dashscope(self._get_analyze_prompt().format(query=query))
+            text = self.call_llm(self._get_analyze_prompt().format(query=query))
             search_query, strategy = query, "直接检索"
             for line in (text or "").splitlines():
                 line = line.strip()

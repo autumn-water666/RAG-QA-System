@@ -81,8 +81,8 @@ database = subjects_kg
 
 [llm]
 model_name = mimo-v2.5
-dashscope_base_url = https://api.xiaomimimo.com/v1
-dashscope_api_key = 你的Mimo/DashScope Key
+llm_base_url = https://api.xiaomimimo.com/v1
+llm_api_key = 你的Mimo/LLM Key
 
 [models]              # 留空 url 则回退本地 bge-m3 / bge-reranker-large
 embedding_url = https://api.siliconflow.cn/v1

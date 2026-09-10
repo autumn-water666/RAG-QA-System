@@ -9,7 +9,7 @@ from rag_qa.core.graph import build_qa_graph, _stream_from_compiled
 import rag_qa.core.graph as _qgraph
 # 导入配置和日志工具，用于系统配置和日志记录
 from base import logger, Config
-# 导入 OpenAI 客户端，用于调用 DashScope API
+# 导入 OpenAI 客户端，用于调用 LLM API
 from openai import OpenAI
 # 导入时间库，用于记录处理时间
 import time
@@ -30,9 +30,9 @@ class IntegratedQASystem:
         # 初始化 BM25 搜索模块，结合 MySQL 和 Redis
         self.bm25_search = BM25Search(self.redis_client, self.mysql_client)
         try:
-            # 初始化 OpenAI 客户端，连接 DashScope API
-            self.client = OpenAI(api_key=self.config.DASHSCOPE_API_KEY,
-                                 base_url=self.config.DASHSCOPE_BASE_URL)
+            # 初始化 OpenAI 兼容客户端，连接 LLM API
+            self.client = OpenAI(api_key=self.config.LLM_API_KEY,
+                                 base_url=self.config.LLM_BASE_URL)
         except Exception as e:
             # 记录 OpenAI 初始化失败的错误日志
             self.logger.error(f"OpenAI 客户端初始化失败: {e}")
@@ -40,8 +40,8 @@ class IntegratedQASystem:
             raise
         # 初始化向量存储，用于 RAG 系统的知识库管理
         self.vector_store = VectorStore()
-        # 初始化 RAG 系统，传入向量存储和 DashScope API 调用函数
-        self.rag_system = RAGSystem(self.vector_store, self.call_dashscope)
+        # 初始化 RAG 系统，传入向量存储和 LLM 调用函数
+        self.rag_system = RAGSystem(self.vector_store, self.call_llm)
         # 初始化对话历史表，用于存储会话记录
         self.init_conversation_table()
         # 构建 LangGraph 编排图（复用上面初始化好的 RAGSystem 与 BM25Search）
@@ -85,8 +85,8 @@ class IntegratedQASystem:
             # 抛出异常，终止初始化
             raise
 
-    def call_dashscope(self, prompt):
-        """调用DashScope API生成答案（流式输出）"""
+    def call_llm(self, prompt):
+        """调用 LLM API 生成答案（流式输出）"""
         try:
             # 创建聊天完成请求，启用流式输出
             completion = self.client.chat.completions.create(

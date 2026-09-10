@@ -17,12 +17,12 @@ conf = Config()
 
 def main(query_mode=True, directory_path="data"):
 
-    #   初始化 DashScope API 客户端 (通过 OpenAI 接口)
-    #   确保环境变量 DASHSCOPE_API_KEY 和 DASHSCOPE_BASE_URL 已设置
+    #   初始化 LLM API 客户端 (通过 OpenAI 兼容接口)
+    #   确保环境变量/配置 LLM_API_KEY 和 LLM_BASE_URL 已设置
     try:
 
-        client = OpenAI(api_key=conf.DASHSCOPE_API_KEY,
-                        base_url=conf.DASHSCOPE_BASE_URL)
+        client = OpenAI(api_key=conf.LLM_API_KEY,
+                        base_url=conf.LLM_BASE_URL)
 
     except Exception as e:
         logger.error(f"初始化 OpenAI 客户端失败 (请检查 API Key 和 Base URL): {e}")
@@ -35,9 +35,9 @@ def main(query_mode=True, directory_path="data"):
 
 
     # 定义 LLM 调用函数 (仅在需要时定义和使用)
-    def call_dashscope(prompt):
+    def call_llm(prompt):
         if not client: # 检查客户端是否可用
-            logger.error("LLM 客户端未初始化，无法调用 call_dashscope")
+            logger.error("LLM 客户端未初始化，无法调用 call_llm")
             return f"错误: LLM客户端不可用"
         try:
             completion = client.chat.completions.create(
@@ -54,7 +54,7 @@ def main(query_mode=True, directory_path="data"):
                  logger.error("LLM API 调用返回无效响应或空消息")
                  return "错误: LLM返回无效响应"
         except Exception as e:
-            logger.error(f"LLM API (call_dashscope) 调用失败: {e}")
+            logger.error(f"LLM API (call_llm) 调用失败: {e}")
             return f"错误: 调用LLM失败 - {e}"
 
     # 初始化 VectorStore
@@ -105,7 +105,7 @@ def main(query_mode=True, directory_path="data"):
 
         logger.info("进入交互式查询模式...")
         try:
-            rag_system = RAGSystem(vector_store, call_dashscope)
+            rag_system = RAGSystem(vector_store, call_llm)
         except Exception as e:
              logger.error(f"初始化 RAGSystem 失败: {e}")
              print("错误：无法初始化 RAG 系统，无法进入查询模式。")

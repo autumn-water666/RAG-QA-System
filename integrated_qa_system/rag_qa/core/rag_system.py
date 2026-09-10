@@ -233,8 +233,8 @@ if __name__ == "__main__":
         #这里可以替换为实际的 LLM 调用逻辑，例如调用 OpenAI API 或其他模型
         LLM=ChatOpenAI(
         model=conf.LLM_MODEL_NAME,
-        base_url=conf.DASHSCOPE_BASE_URL,
-        api_key=conf.DASHSCOPE_API_KEY,
+        base_url=conf.LLM_BASE_URL,
+        api_key=conf.LLM_API_KEY,
         )
         response = LLM.invoke(prompt)
         return response.content.strip()
