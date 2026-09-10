@@ -85,6 +85,7 @@ def build_qa_graph(rag_system, bm25_search=None):
 
     # ---- 节点 ----
 
+    # 定义节点函数，对问题进行意图识别
     def classify(state):
         logger.info(f"[graph] 查询分类: '{state['query']}'")
         state["category"] = query_classifier.predict_category(state["query"])
@@ -193,26 +194,27 @@ def build_qa_graph(rag_system, bm25_search=None):
 
     # ---- 组图 ----
     # 意图识别开关：conf.USE_INTENT_CLASSIFY=True 走"通用知识/专业咨询" classify 路由；
-    # 为 False 则不注册 classify 节点、START 直达 bm25，所有问题一律走检索(RAG)。
+    # 为 False 则不注册 classify 节点，但仍保留 analyze 问题解析（规范化口语化查询 +
+    # 选策略，让 BM25/检索不因口语化而漏接），所有问题一律走检索(RAG)。
     graph = StateGraph(QState)
+    graph.add_node("analyze", analyze)       # 问题解析：规范查询 + 选策略，独立于意图识别
     if conf.USE_INTENT_CLASSIFY:
         graph.add_node("classify", classify)
-        graph.add_node("analyze", analyze)   # 问题解析：规范查询 + 选策略，先于 BM25/检索
         graph.add_edge(START, "classify")
-        graph.add_edge("analyze", "bm25")
+    else:
+        # 关闭意图识别：跳过 BERT 分类，直接从问题解析开始，再进 BM25
+        graph.add_edge(START, "analyze")
     graph.add_node("bm25", bm25)
     graph.add_node("retrieve", retrieve)
     graph.add_node("generate", generate)
     graph.add_node("set_not_found", set_not_found)
+    graph.add_edge("analyze", "bm25")
 
     if conf.USE_INTENT_CLASSIFY:
         graph.add_conditional_edges(
             "classify", route_after_classify,
             {"generate": "generate", "analyze": "analyze"}
         )
-    else:
-        # 关闭意图识别：跳过分类/解析，统一从 BM25 快速命中开始，未命中则检索
-        graph.add_edge(START, "bm25")
     graph.add_conditional_edges(
         "bm25", route_after_bm25,
         {"generate": "generate",
