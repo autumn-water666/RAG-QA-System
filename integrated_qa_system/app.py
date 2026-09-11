@@ -46,11 +46,11 @@ qa_system = IntegratedQASystem()
 GREETING_PATTERNS = [
     {
         "pattern": r"^(你好|您好|hi|hello)",
-        "response": "你好！我是黑马程序员，专注于为学生答疑解惑，很高兴为你服务！"
+        "response": "你好！我是你的 AI 智能助手，很高兴为你服务！"
     },
     {
         "pattern": r"^(你是谁|您是谁|你叫什么|你的名字|who are you)",
-        "response": "我是黑马程序员，你的智能学习助手，致力于提供 IT 教育相关的解答！"
+        "response": "我是你的 AI 智能助手，可以帮你解答问题！"
     },
     {
         "pattern": r"^(在吗|在不在|有人吗)",
@@ -58,7 +58,7 @@ GREETING_PATTERNS = [
     },
     {
         "pattern": r"^(干嘛呢|你在干嘛|做什么)",
-        "response": "我正在待命，随时为你解答 IT 学习相关的问题！有什么我可以帮你的？"
+        "response": "我正在待命，随时为你解答问题！有什么我可以帮你的？"
     }
 ]
 
@@ -257,10 +257,11 @@ async def websocket_endpoint(websocket: WebSocket):
 async def health_check():
     return {"status": "healthy"}
 
-# 获取有效的学科类别
+# 获取主题/分类列表：知识库已有数据 ∪ 配置中的初始种子（去重）。不再固定默认。
 @app.get("/api/sources")
 async def get_sources():
-    return {"sources": qa_system.config.VALID_SOURCES}
+    merged = {*qa_system.vector_store.list_sources(), *qa_system.config.VALID_SOURCES}
+    return {"sources": sorted(merged)}
 
 # 列出所有历史会话（供前端左栏会话列表切换）
 @app.get("/api/sessions")
@@ -284,12 +285,24 @@ async def set_intent_classify(payload: dict):
     return {"use_intent_classify": qa_system.get_intent_classify()}
 
 
-def _validate_subject(subject: Optional[str]) -> Optional[str]:
-    """校验学科过滤参数，非法值抛 400，None 原样返回。"""
+_SUBJECT_RE = re.compile(r"^[A-Za-z0-9_\-一-鿿]+$")
+
+
+def _sanitize_subject(subject: Optional[str]) -> Optional[str]:
+    """清洗主题参数：仅做安全与空校验，不再校验成员（用户可新建分类）。
+
+    - None → None（表示不过滤）
+    - 空串 / 含非法字符（夹带了路径分隔符或引号，会污染主题目录名或 Milvus 过滤表达式）→ 抛 400
+    - 合法 → 原样返回，即使该主题当前尚未有数据（首次上传即创建）
+    """
     if subject is None:
         return None
-    if subject not in qa_system.config.VALID_SOURCES:
-        raise HTTPException(status_code=400, detail=f"未知学科 '{subject}'，可选：{qa_system.config.VALID_SOURCES}")
+    subject = subject.strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="主题不能为空")
+    if not _SUBJECT_RE.match(subject):
+        raise HTTPException(status_code=400,
+                            detail="主题仅支持中文、字母、数字、下划线、连字符")
     return subject
 
 
@@ -297,8 +310,8 @@ def _validate_subject(subject: Optional[str]) -> Optional[str]:
 
 @app.get("/api/kb/documents")
 async def kb_list_documents(subject: Optional[str] = Query(None), q: Optional[str] = Query(None)):
-    """知识库文档列表：按学科过滤 + 可选库内关键词过滤。"""
-    subject = _validate_subject(subject)
+    """知识库文档列表：按主题过滤 + 可选库内关键词过滤。"""
+    subject = _sanitize_subject(subject)
     documents = qa_system.vector_store.list_documents(subject=subject, q=q)
     return {"documents": documents}
 
@@ -315,7 +328,7 @@ async def kb_get_document(doc_id: str):
 @app.get("/api/kb/search")
 async def kb_search(q: str = Query(...), subject: Optional[str] = Query(None)):
     """库内关键词搜索，按文档聚合返回命中摘要。"""
-    subject = _validate_subject(subject)
+    subject = _sanitize_subject(subject)
     results = qa_system.vector_store.search_documents(q, subject=subject)
     return {"results": results}
 
@@ -328,8 +341,13 @@ DATA_ROOT = os.path.join(BASE_DIR, "rag_qa", "data")
 
 @app.post("/api/kb/documents")
 async def kb_upload_document(file: UploadFile = File(...), subject: Optional[str] = Form(None)):
-    """上传文档，切块 → 向量化 → 增量写入 Milvus。失败整体回滚（删索引 + 删文件）。"""
-    subject = _validate_subject(subject) or qa_system.config.VALID_SOURCES[0]
+    """上传文档，切块 → 向量化 → 增量写入 Milvus。失败整体回滚（删索引 + 删文件）。
+
+    subject 必填：用户自行指定主题，新主题按需创建目录并入库（不再受固定分类限制）。
+    """
+    if subject is None:
+        raise HTTPException(status_code=400, detail="上传必须指定主题(subject)")
+    subject = _sanitize_subject(subject)
     raw_name = os.path.basename((file.filename or "").replace("\\", "/"))
     if not raw_name or not os.path.splitext(raw_name)[1]:
         raise HTTPException(status_code=400, detail="文件名无效或缺少扩展名")
@@ -337,7 +355,7 @@ async def kb_upload_document(file: UploadFile = File(...), subject: Optional[str
     if ext not in document_loaders:
         raise HTTPException(status_code=400, detail=f"不支持的文件类型: {ext}")
 
-    # 落盘到学科数据目录；同名文件覆盖（doc_id 一致，Milvus upsert 幂等）
+    # 落盘到主题数据目录；同名文件覆盖（doc_id 一致，Milvus upsert 幂等）
     target_dir = os.path.join(DATA_ROOT, f"{subject}_data")
     os.makedirs(target_dir, exist_ok=True)
     save_path = os.path.join(target_dir, raw_name)
@@ -415,9 +433,9 @@ async def kb_rebuild():
         if chunks:
             qa_system.vector_store.add_documents(chunks)
             total += len(chunks)
-            logger.info(f"[kb] 重建学科 {subject}: {len(chunks)} 块")
+            logger.info(f"[kb] 重建主题 {subject}: {len(chunks)} 块")
         else:
-            logger.warning(f"[kb] 学科 {subject} 无有效内容")
+            logger.warning(f"[kb] 主题 {subject} 无有效内容")
     return {"status": "success", "subjects": subjects, "total_chunks": total}
 
 # 静态资源：Vite 构建产物输出到 static/，base 用相对路径，assets/ 相对根目录解析。

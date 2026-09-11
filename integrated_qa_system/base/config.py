@@ -95,11 +95,11 @@ class Config():
         # 意图识别（LangGraph classify 节点）开关：true=按"通用知识/专业咨询"路由；
         # false=跳过分类，所有问题一律走检索(RAG)。默认开启
         self.USE_INTENT_CLASSIFY = self.config.getboolean('app', 'use_intent_classify', fallback=True)
-        # valid_sources 存的是逗号分隔字符串，转成真正可迭代的列表，
-        # 否则下游 迭代/join/成员判断 都会拿整串字符串当列表用
+        # 主题/分类不做硬编码默认，由用户在上传时自行创建；已有数据即已有主题。
+        # valid_sources 仅作为"初始种子"可选配置（逗号分隔），没配则为空，
+        # 与知识库已有数据并集后经 /api/sources 返回，供前端展示与过滤。
         raw_sources = self.config.get('app', 'valid_sources', fallback='')
-        self.VALID_SOURCES = [s.strip() for s in raw_sources.split(',') if s.strip()] \
-            if raw_sources else ["ai", "java", "test", "ops", "bigdata"]
+        self.VALID_SOURCES = [s.strip() for s in raw_sources.split(',') if s.strip()]
 
 
 

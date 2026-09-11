@@ -22,7 +22,7 @@ def setup_logging(log_file=log_file_path):
     # 创建日志目录
     os.makedirs(os.path.dirname(log_file), exist_ok=True)
     # 获取日志器
-    logger = logging.getLogger("EduRAG")
+    logger = logging.getLogger("RAG")
     # 设置日志级别
     logger.setLevel(logging.INFO)
     # print(f'logger.handlers-->{logger.handlers}')

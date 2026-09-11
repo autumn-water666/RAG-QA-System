@@ -344,8 +344,8 @@ def main():
     print("\n欢迎使用集成问答系统！")
     # 打印会话 ID
     print(f"会话ID: {session_id}")
-    # 打印支持的学科类别
-    print(f"支持的学科类别：{qa_system.config.VALID_SOURCES}")
+    # 打印支持的主题分类
+    print(f"支持的主题：{qa_system.config.VALID_SOURCES}")
     # 提示用户输入查询或退出
     print("输入查询进行问答，输入 'exit' 退出。")
     try:
@@ -359,13 +359,11 @@ def main():
                 print("再见！")
                 # 退出循环
                 break
-            # 获取用户输入的学科过滤
-            source_filter = input(f"请输入学科类别 ({'/'.join(qa_system.config.VALID_SOURCES)}) (直接回车默认不过滤): ").strip()
+            # 获取用户输入的主题过滤（CLI 不做硬校验，直接透传）
+            source_filter = input(f"请输入主题过滤 ({'/'.join(qa_system.config.VALID_SOURCES)}) (直接回车默认不过滤): ").strip()
             if source_filter and source_filter not in qa_system.config.VALID_SOURCES:
-                # 如果学科过滤无效，记录警告日志
-                logger.warning(f"无效的学科类别 '{source_filter}'，将不过滤")
-                # 设置为空，忽略过滤
-                source_filter = None
+                logger.warning(f"主题 '{source_filter}' 不在已配置种子中，仍按输入过滤")
+            source_filter = source_filter or None
             # 打印答案提示
             print("\n答案: ", end="", flush=True)
             # 初始化累积答案的字符串

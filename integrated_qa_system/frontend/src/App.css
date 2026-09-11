@@ -534,7 +534,8 @@ button { font-family: inherit; }
 }
 .kb-subject-tabs button:hover { border-color: var(--primary); }
 .kb-subject-tabs button.active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); font-weight: 600; }
-.kb-toolbar-right { display: flex; gap: 10px; align-items: center; }
+.kb-toolbar-right { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.kb-subject-input { min-width: 190px; flex: 1 1 190px; }
 .kb-search {
   padding: 8px 12px;
   border: 1px solid var(--border);

@@ -152,7 +152,7 @@ class VectorStore:
             schema.add_field(field_name="parent_id", datatype=DataType.VARCHAR, max_length=100)
             # 添加父块内容字段，VARCHAR 类型，最大长度 65535
             schema.add_field(field_name="parent_content", datatype=DataType.VARCHAR, max_length=65535)
-            # 添加学科类别字段，VARCHAR 类型，最大长度 50
+            # 添加主题类别字段，VARCHAR 类型，最大长度 50
             schema.add_field(field_name="source", datatype=DataType.VARCHAR, max_length=50)
             # 添加文档级 ID 字段：同一文件的全部块共享，稳定跨批次，用于按文档删除/去重/详情
             schema.add_field(field_name="doc_id", datatype=DataType.VARCHAR, max_length=100)
@@ -422,6 +422,23 @@ class VectorStore:
                 p["updated_at"] = r.get("timestamp", "")
         return list(docs.values())
 
+    def list_sources(self) -> list:
+        """返回知识库中已存在的全部主题（source 字段去重），作为动态分类来源。
+
+        "已有数据的保留"：只要库里还有某主题的块，它就会出现在这里；
+        上传到新主题后，新主题也随之上浮。查询失败时返回空列表，不抛异常。
+        """
+        try:
+            rows = self.client.query_distinct(
+                collection_name=self.collection_name,
+                output_fields=["source"],
+                limit=16384,
+            )
+            return sorted({r.get("source") for r in rows if r.get("source")})
+        except Exception as e:
+            self.logger.error(f"查询主题列表失败: {e}")
+            return []
+
     def get_document(self, doc_id: str) -> dict:
         """取单个文档详情（含全文 + 有序块列表），不存在返回 None。"""
         rows = self._query_chunks(doc_id=doc_id)
@@ -454,7 +471,7 @@ class VectorStore:
 
         Args:
             query: 搜索关键词。
-            subject: 可选学科过滤。
+            subject: 可选主题过滤。
             k: 聚合后最多返回的文档数。
         """
         rows = self._query_chunks(subject=subject, q=query)
@@ -497,7 +514,7 @@ if __name__ == "__main__":
     # print(f"embedding_function.dim--》{vector_store.embedding_function.dim}")
     # documents = process_documents(directory_path)
     # vector_store.add_documents(documents)
-    query = "AI学科的课程内容是什么"
+    query = "AI主题的课程内容是什么"
     results = vector_store.hybrid_search_with_rerank(query, source_filter='ai')
     print(f'results-->{results}')
     print(f'results-->{type(results)}')

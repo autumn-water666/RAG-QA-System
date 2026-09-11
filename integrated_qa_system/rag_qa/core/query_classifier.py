@@ -257,10 +257,10 @@ if __name__ == "__main__":
 
     # 训练结束，跑几个示例预测
     test_queries = [
-        "AI学科的课程大纲是什么",
-        "JAVA课程费用多少？",
+        "AI 产品的技术架构是什么",
+        "数据库的索引优化怎么做？",
         "5*9等于多少？",
-        "AI培训有哪些老师？"
+        "AI 有哪些主流框架？"
     ]
     for query in test_queries:
         category = classifier.predict_category(query)

@@ -156,7 +156,7 @@ class RAGSystem:
 
         Args:
             query: 用户问题。
-            source_filter: 学科过滤条件。
+            source_filter: 主题过滤条件。
             history: 对话历史，格式 [{"question":..., "answer":...}, ...]，用于多轮上下文。
 
         Yields:
@@ -164,7 +164,7 @@ class RAGSystem:
         """
         #   记录查询开始时间
         start_time = time.time()
-        logger.info(f"开始处理查询: '{query}', 学科过滤: {source_filter}")
+        logger.info(f"开始处理查询: '{query}', 主题过滤: {source_filter}")
 
         #   将最近对话历史转成文本，并入上下文，让模型能看到多轮背景
         history_context = ""

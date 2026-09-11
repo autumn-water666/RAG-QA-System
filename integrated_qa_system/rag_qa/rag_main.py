@@ -75,27 +75,28 @@ def main(query_mode=True, directory_path="data"):
         # --- 数据处理模式 ---
         logger.info("进入数据处理模式...")
         total_chunks_added = 0
-        for source_dir in conf.VALID_SOURCES:
-            dir_path = os.path.join(directory_path, f"{source_dir}_data")
-            if os.path.exists(dir_path):
-                logger.info(f"开始处理目录: {dir_path}")
-                try:
-                    chunks = process_documents(
-                        dir_path,
-                        conf.PARENT_CHUNK_SIZE,
-                        conf.CHILD_CHUNK_SIZE,
-                        conf.CHUNK_OVERLAP,
-                    )
-                    if chunks:
-                        vector_store.add_documents(chunks)
-                        total_chunks_added += len(chunks)
-                        logger.info(f"成功处理目录 {dir_path}，添加了 {len(chunks)} 个文档块")
-                    else:
-                        logger.info(f"目录 {dir_path} 未发现有效文档或处理结果为空")
-                except Exception as e:
-                    logger.error(f"处理目录 {dir_path} 时出错: {e}")
-            else:
-                logger.warning(f"目录 {dir_path} 不存在，跳过处理")
+        # 动态扫描数据目录下所有 {主题}_data 子目录，不再依赖固定的 valid_sources 列表
+        for entry in sorted(os.listdir(directory_path)):
+            dir_path = os.path.join(directory_path, entry)
+            source = entry.replace("_data", "")
+            if not (os.path.isdir(dir_path) and source):
+                continue
+            logger.info(f"开始处理目录: {dir_path}")
+            try:
+                chunks = process_documents(
+                    dir_path,
+                    conf.PARENT_CHUNK_SIZE,
+                    conf.CHILD_CHUNK_SIZE,
+                    conf.CHUNK_OVERLAP,
+                )
+                if chunks:
+                    vector_store.add_documents(chunks)
+                    total_chunks_added += len(chunks)
+                    logger.info(f"成功处理目录 {dir_path}，添加了 {len(chunks)} 个文档块")
+                else:
+                    logger.info(f"目录 {dir_path} 未发现有效文档或处理结果为空")
+            except Exception as e:
+                logger.error(f"处理目录 {dir_path} 时出错: {e}")
         logger.info(f"数据处理完成，共添加了 {total_chunks_added} 个文档块到向量存储")
     else:
         # --- 交互式查询模式 ---
@@ -112,8 +113,8 @@ def main(query_mode=True, directory_path="data"):
              return
 
         valid_sources = conf.VALID_SOURCES
-        print("\n欢迎使用 EduRAG 交互式查询系统！")
-        print(f"支持的学科类别：{valid_sources}")
+        print("\n欢迎使用 RAG 交互式查询系统！")
+        print(f"支持的主题：{valid_sources}")
         print("输入您的问题，或输入 'exit' 退出。")
 
         while True:
@@ -123,17 +124,11 @@ def main(query_mode=True, directory_path="data"):
                 print("再见！")
                 break
 
-            source_filter_input = input(f"请输入学科类别 ({'/'.join(valid_sources)}) (直接回车默认不过滤)：").strip()
-            source_filter = None # 默认不过滤
+            # CLI 主题过滤不做硬校验（主题可由用户自由创建），直接透传
+            source_filter_input = input(f"请输入主题过滤 ({'/'.join(valid_sources)}) (直接回车默认不过滤)：").strip()
+            source_filter = source_filter_input or None
             if source_filter_input:
-                if source_filter_input in valid_sources:
-                    source_filter = source_filter_input
-                    logger.info(f"用户选择了学科过滤: {source_filter}")
-                else:
-                    logger.warning(
-                        f"无效的学科类别 '{source_filter_input}'，将不过滤"
-                    )
-                    print(f"提示：输入的学科 '{source_filter_input}' 无效，将不过滤。")
+                logger.info(f"用户选择了主题过滤: {source_filter_input}")
 
 
             try:
@@ -154,7 +149,7 @@ if __name__ == "__main__":
     # main(query_mode=False)
     # 或者通过命令行参数控制
     import argparse
-    parser = argparse.ArgumentParser(description="EduRAG System Main Entry Point")
+    parser = argparse.ArgumentParser(description="RAG System Main Entry Point")
     parser.add_argument('--data-processing', action='store_true', help='Run in data processing mode instead of query mode.')
     parser.add_argument('--data-dir', type=str, default='./data', help='Path to the data directory.')
     args = parser.parse_args()

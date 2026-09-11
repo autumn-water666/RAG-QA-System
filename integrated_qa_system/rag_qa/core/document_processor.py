@@ -74,18 +74,18 @@ def load_documents_from_directory(directory_path) -> list[Document]:
         1. 递归遍历 directory_path 下所有子目录
         2. 对每个文件，检查扩展名是否在 document_loaders 映射表中
         3. 如果支持，实例化对应的 Loader 并加载文档内容
-        4. 为每个加载的 Document 添加 source（学科类别）、file_path、timestamp 元数据
+        4. 为每个加载的 Document 添加 source（主题类别）、file_path、timestamp 元数据
         5. 如果加载失败，记录错误日志并跳过该文件
 
     Args:
-        directory_path: 数据目录路径，目录名用于提取学科类别（如 "ai_data" → "ai"）。
+        directory_path: 数据目录路径，目录名用于提取主题类别（如 "ai_data" → "ai"）。
 
     Returns:
         加载后的 LangChain Document 对象列表。
     """
     documents = []
     supported_extensions = document_loaders.keys()
-    # 从目录名提取学科类别，例如 "ai_data" → "ai"，"math_data" → "math"
+    # 从目录名提取主题类别，例如 "ai_data" → "ai"，"math_data" → "math"
     source = os.path.basename(directory_path).replace("_data", "")
 
     # 递归遍历目录下所有文件
@@ -110,7 +110,7 @@ def load_documents_from_directory(directory_path) -> list[Document]:
 
                     # 为每个文档添加元数据
                     for doc in loaded_docs:
-                        doc.metadata["source"] = source          # 学科类别
+                        doc.metadata["source"] = source          # 主题类别
                         doc.metadata["file_path"] = file_path    # 文件完整路径
                         doc.metadata["timestamp"] = datetime.now().isoformat()  # 加载时间
                         # 稳定文档 ID：基于文件绝对路径哈希，跨批次一致，
@@ -177,7 +177,7 @@ def _split_single_document(doc, doc_index, parent_chunk_size=conf.PARENT_CHUNK_S
 
 
 def _attach_doc_metadata(doc, file_path, source):
-    """为单个加载的 Document 补齐学科/路径/时间戳/稳定 ID 元数据。"""
+    """为单个加载的 Document 补齐主题/路径/时间戳/稳定 ID 元数据。"""
     doc.metadata["source"] = source
     doc.metadata["file_path"] = file_path
     doc.metadata["timestamp"] = datetime.now().isoformat()
@@ -194,7 +194,7 @@ def process_file(file_path: str, source: str,
 
     Args:
         file_path: 单个文件的绝对路径（已保存到本地）。
-        source: 学科类别（如 "ai"），写入每个子块的 source 字段。
+        source: 主题类别（如 "ai"），写入每个子块的 source 字段。
 
     Returns:
         该文件切分后的子块列表；文件类型不支持时抛 ValueError。
@@ -240,7 +240,7 @@ def process_documents(directory_path, parent_chunk_size=conf.PARENT_CHUNK_SIZE,
         - id: 唯一标识，格式为 "doc_{文档索引}_parent_{父块索引}_child_{子块索引}"
         - parent_id: 所属父块的 ID
         - parent_content: 父块的完整文本（用于检索后补充上下文）
-        - source: 学科类别
+        - source: 主题类别
         - file_path: 来源文件路径
         - timestamp: 加载时间
 
@@ -273,7 +273,7 @@ def process_documents(directory_path, parent_chunk_size=conf.PARENT_CHUNK_SIZE,
 
 if __name__ == '__main__':
     chunks = process_documents(
-        '/Users/ligang/PycharmProjects/LLM/ITCAST_EduRAG/data/ai_data',
+        'rag_qa/data/ai_data',  # 注意改成你自己的数据目录（{主题}_data）
         conf.PARENT_CHUNK_SIZE,
         conf.CHILD_CHUNK_SIZE,
         conf.CHUNK_OVERLAP,

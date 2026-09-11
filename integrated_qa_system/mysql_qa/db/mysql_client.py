@@ -57,6 +57,7 @@ class MySQLClient:
             print(data.head())
             for _, row in data.iterrows():
                 insert_query = "INSERT INTO jpkb (subject_name, question, answer) VALUES (%s, %s, %s)"
+                # 注意 row["学科名称"] 是 CSV 表头列名（数据契约），对应该列，勿随意改名否则读不进来
                 self.cursor.execute(insert_query, (row["学科名称"], row["问题"],row["答案"]))
             self.connection.commit()
             self.logger.info("Mysql数据插入成功")

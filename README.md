@@ -1,6 +1,6 @@
-# EduRAG 智慧问答系统
+# RAG 智慧问答系统
 
-教育领域智能问答系统。用 **LangGraph 状态机编排**把「路由 → 问题解析 → BM25 快速命中 → 向量混合召回 → LLM 生成」串成一条可观测的流水线，支持流式输出、多轮对话、引用溯源，以及知识库的在线浏览/上传/删除/重建。
+通用智能问答系统。用 **LangGraph 状态机编排**把「路由 → 问题解析 → BM25 快速命中 → 向量混合召回 → LLM 生成」串成一条可观测的流水线，支持流式输出、多轮对话、引用溯源，以及知识库的在线浏览/上传/删除/重建。
 
 ## 架构
 
@@ -99,7 +99,7 @@ rerank_model = BAAI/bge-reranker-v2-m3
 |--------|------|
 | `use_intent_classify` | 意图识别开关，true=按通用/专业路由，false=一律走检索（设置页可运行时切换） |
 | `bm25_threshold` | BM25 快速命中置信度阈值，越高越保守（默认 0.92，只放非常高置信的标准问答） |
-| `valid_sources` | 学科类别列表（ai, java, test, ops, bigdata） |
+| `valid_sources` | （可选）主题初始种子，逗号分隔。缺省留空 = 分类完全由知识库已有数据 / 上传产生 |
 | `retrieval_k` / `candidate_m` | 混合召回候选子块数 / 重排后返回父块数 |
 
 ### 4. 初始化与灌库
@@ -147,7 +147,7 @@ bash deploy.sh    # git pull → 前端有改动则 npm build → 后端有改�
 | GET | `/api/settings/intent` · POST | 查询 / 运行时切换意图识别开关 |
 | GET/POST/DELETE | `/api/kb/documents` | 知识库文档列表 / 上传 / 删除 |
 | POST | `/api/kb/rebuild` | 全量重建向量索引（幂等） |
-| GET | `/api/sources` · `/api/sessions` | 学科列表 · 会话列表 |
+| GET | `/api/sources` · `/api/sessions` | 主题列表 · 会话列表 |
 
 完整契约见 [docs/API.md](docs/API.md)。
 
@@ -169,7 +169,7 @@ integrated_qa_system/
 │   │   ├── strategy_selector.py # 问题解析(analyze) + 检索策略
 │   │   ├── prompts.py          # Prompt 模板
 │   │   └── document_processor.py # 文档切分
-│   └── data/                   # {学科}_data/ 文档源文件
+│   └── data/                   # {主题}_data/ 文档源文件
 ├── frontend/               # React 源码（Vite）
 ├── static/                 # 前端构建产物（FastAPI 托管）
 └── logs/                   # 运行日志

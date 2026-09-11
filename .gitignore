@@ -66,3 +66,4 @@ integrated_qa_system/rag_qa/bert_results
 # 知识库原始文档（运行期上传积累，不入库；已跟踪的旧文件需另行 git rm --cached）
 /rag_qa/data/
 integrated_qa_system/rag_qa/data/
+docs/QUICKSTART.md
