@@ -12,30 +12,75 @@ export default function KbPage() {
   const [uploading, setUploading] = useState(false) // 上传中
   const [uploadMsg, setUploadMsg] = useState('') // 上传态提示（成功/失败）
   const fileInputRef = useRef(null)
+  const pollRef = useRef(null)
+
+  function stopPolling() {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }
+
+  async function pollUpload(jobId, fn) {
+    try {
+      const s = await api.uploadStatus(jobId)
+      fn(s)
+      if (s.finished) {
+        stopPolling()
+        return
+      }
+    } catch (e) {
+      // 任务已过期等：不再轮询
+      console.error('查询上传进度失败', e)
+      stopPolling()
+      return
+    }
+    // 未完成则定时再查
+    pollRef.current = setTimeout(() => pollUpload(jobId, fn), 1200)
+  }
 
   async function onUploadFile(e) {
-    const file = e.target.files && e.target.files[0]
+    const files = e.target.files ? Array.from(e.target.files) : []
     e.target.value = '' // 允许重复选同一文件
-    if (!file) return
+    if (!files.length) return
     const target = (uploadSubject && uploadSubject.trim()) || activeKb
     if (!target) {
       setUploadMsg('请填写或选择上传主题后再上传')
       return
     }
     setUploadMsg('')
+    stopPolling()
     setUploading(true)
     try {
-      const ret = await api.uploadDocument(file, target)
-      setUploadMsg(`已上传「${ret.title}」到主题「${target}」，${ret.chunk_count} 块`)
+      const { job_id, total } = await api.uploadDocuments(files, target)
+      const names = files.map((f) => f.name).join('、')
+      setUploadMsg(`已提交 ${total} 个文件到「${target}」，正在后台处理…`)
       setActiveKb(target)
       await loadSources() // 若有新主题，让它上浮到分类栏
-      loadDocs(target, keyword.trim())
+      // 轮询后台进度，任务结束后刷新文档列表
+      pollUpload(job_id, (s) => {
+        if (s.finished) {
+          setUploading(false)
+          const ok = s.done
+          const bad = s.failed
+          setUploadMsg(
+            s.failed
+              ? `处理完成：成功 ${ok}/${s.total} 个，失败 ${bad} 个（${names}）`
+              : `处理完成：${ok} 个文件已入库到「${target}」（${names}）`
+          )
+          loadDocs(target, keyword.trim())
+        } else {
+          setUploadMsg(`正在后台处理 ${names}…（${s.done}/${s.total} 已完成）`)
+        }
+      })
     } catch (err) {
       setUploadMsg(`上传失败：${err.message}`)
-    } finally {
       setUploading(false)
     }
   }
+
+  // 组件卸载时停止轮询，避免泄露
+  useEffect(() => stopPolling, [])
 
   useEffect(() => {
     loadSources()
@@ -116,6 +161,7 @@ export default function KbPage() {
           <input
             ref={fileInputRef}
             type="file"
+            multiple
             className="kb-file"
             accept=".txt,.md,.pdf,.doc,.docx,.ppt,.pptx,.rtf,.epub,.csv,.xls,.xlsx"
             style={{ display: 'none' }}

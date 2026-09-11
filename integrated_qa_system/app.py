@@ -350,61 +350,168 @@ async def kb_search(q: str = Query(...), subject: Optional[str] = Query(None)):
 DATA_ROOT = os.path.join(BASE_DIR, "rag_qa", "data")
 
 
-@app.post("/api/kb/documents")
-async def kb_upload_document(file: UploadFile = File(...), subject: Optional[str] = Form(None)):
-    """上传文档，切块 → 向量化 → 增量写入 Milvus。失败整体回滚（删索引 + 删文件）。
+# ---- 批量异步上传：任务登记 + 后台线程处理 ----
+# 切块 → embedding → 写 Milvus 都是耗时操作，放后台线程跑，避免阻塞事件循环
+# （否则一上传整颗 event loop 被卡住，其它 WebSocket 流式问答也会一起停住）。
+UPLOAD_JOBS = {}                      # job_id -> job dict（UPLOAD_LOCK 保护）
+UPLOAD_LOCK = threading.Lock()
+PROCESS_LOCK = threading.Lock()       # 串行化共享嵌入模型的调用，避免并发推理
 
-    subject 必填：用户自行指定主题，新主题按需创建目录并入库（不再受固定分类限制）。
+
+def _new_upload_job(subject: str, staged: list) -> str:
+    """登记上传任务并立即返回 job_id。staged: [(原始文件名, 暂存路径), ...] 处理在后台进行。"""
+    job_id = uuid.uuid4().hex
+    job = {
+        "id": job_id,
+        "subject": subject,
+        "total": len(staged),
+        "done": 0,
+        "failed": 0,
+        "finished": False,
+        "items": [
+            {"file": name, "_path": path, "status": "pending",
+             "message": "", "title": "", "chunk_count": 0}
+            for name, path in staged
+        ],
+    }
+    with UPLOAD_LOCK:
+        UPLOAD_JOBS[job_id] = job
+    return job_id
+
+
+def _process_upload_job(job_id: str):
+    """后台 worker：逐个把暂存文件 → 主题目录 → 切块 → 向量化 -> 写 Milvus。"""
+    with UPLOAD_LOCK:
+        job = UPLOAD_JOBS.get(job_id)
+    if not job:
+        return
+    subject = job["subject"]
+    # 同一时刻只跑一个 worker，避免并发调用共享的嵌入模型（bge-m3 / 远程 API）
+    with PROCESS_LOCK:
+        for it in job["items"]:
+            name, staged = it["file"], it["_path"]
+            it["status"] = "processing"
+            doc_id = save_path = None
+            try:
+                raw_name = os.path.basename(name.replace("\\", "/"))
+                ext = os.path.splitext(raw_name)[1].lower()
+                if ext not in document_loaders:
+                    raise ValueError(f"不支持的文件类型: {ext}")
+                target_dir = os.path.join(DATA_ROOT, f"{subject}_data")
+                os.makedirs(target_dir, exist_ok=True)
+                save_path = os.path.join(target_dir, raw_name)
+                # 稳定文档 ID 与 load 路径保持一致，供删除/去重/详情定位
+                doc_id = hashlib.md5(os.path.abspath(save_path).encode('utf-8')).hexdigest()
+                # 暂存 → 最终落盘；同名文件覆盖（doc_id 一致，Milvus upsert 幂等）
+                os.replace(staged, save_path)
+                chunks = process_file(save_path, subject)
+                if not chunks:
+                    raise ValueError("文档切分后未生成有效内容")
+                qa_system.vector_store.add_documents(chunks)
+                it.update(status="done", title=os.path.splitext(raw_name)[0], chunk_count=len(chunks))
+                logger.info(f"[kb] 上传完成 {save_path}: {len(chunks)} 块")
+            except Exception as e:
+                # 失败：删已入库索引 + 删已落盘文件，不让半成品留在库/盘上
+                logger.error(f"[kb] 上传处理失败 {name}: {e}")
+                try:
+                    if doc_id:
+                        qa_system.vector_store.delete_document(doc_id)
+                except Exception:
+                    pass
+                if save_path and os.path.exists(save_path):
+                    try:
+                        os.remove(save_path)
+                    except Exception:
+                        pass
+                it["status"] = "error"
+                it["message"] = str(e)
+            finally:
+                # 清理可能残留的暂存文件（未成功 move 时）
+                if os.path.exists(staged):
+                    try:
+                        os.remove(staged)
+                    except Exception:
+                        pass
+        job["done"] = sum(1 for i in job["items"] if i["status"] == "done")
+        job["failed"] = sum(1 for i in job["items"] if i["status"] == "error")
+    job["finished"] = True
+    # 清空暂存目录
+    try:
+        os.rmdir(os.path.join(DATA_ROOT, ".staging", job_id))
+    except Exception:
+        pass
+
+
+def _write_bytes(path: str, data: bytes):
+    with open(path, "wb") as f:
+        f.write(data)
+
+
+@app.post("/api/kb/documents")
+async def kb_upload_document(files: List[UploadFile] = File(...), subject: Optional[str] = Form(None)):
+    """批量上传文档：一次可传多个文件到同一主题。
+
+    - 先整体校验文件名/扩展名，再全部落盘到暂存目录登记任务
+    - 立即返回 {job_id, total}；切块/向量化/写 Milvus 在后台线程跑，不阻塞事件循环
+    - 处理进度用 GET /api/kb/uploads/{job_id} 轮询
     """
     if subject is None:
         raise HTTPException(status_code=400, detail="上传必须指定主题(subject)")
     subject = _sanitize_subject(subject)
-    raw_name = os.path.basename((file.filename or "").replace("\\", "/"))
-    if not raw_name or not os.path.splitext(raw_name)[1]:
-        raise HTTPException(status_code=400, detail="文件名无效或缺少扩展名")
-    ext = os.path.splitext(raw_name)[1].lower()
-    if ext not in document_loaders:
-        raise HTTPException(status_code=400, detail=f"不支持的文件类型: {ext}")
+    if not files:
+        raise HTTPException(status_code=400, detail="未选择任何文件")
 
-    # 落盘到主题数据目录；同名文件覆盖（doc_id 一致，Milvus upsert 幂等）
-    target_dir = os.path.join(DATA_ROOT, f"{subject}_data")
-    os.makedirs(target_dir, exist_ok=True)
-    save_path = os.path.join(target_dir, raw_name)
-    # 稳定文档 ID 与 load 路径保持一致，供删除/去重/详情定位
-    doc_id = hashlib.md5(os.path.abspath(save_path).encode('utf-8')).hexdigest()
+    # 先整体校验所有文件，避免写了一半才报错留下零星暂存文件
+    validated = []
+    for f in files:
+        raw = os.path.basename((f.filename or "").replace("\\", "/"))
+        if not raw or not os.path.splitext(raw)[1]:
+            raise HTTPException(status_code=400, detail=f"文件名无效: {f.filename}")
+        ext = os.path.splitext(raw)[1].lower()
+        if ext not in document_loaders:
+            raise HTTPException(status_code=400, detail=f"不支持的文件类型: {raw} ({ext})")
+        validated.append((raw, f))
 
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="上传内容为空")
-    with open(save_path, "wb") as f:
-        f.write(content)
-
+    # 落盘到暂存目录（磁盘 IO 丢线程池，避免阻塞事件循环）
+    staging_dir = os.path.join(DATA_ROOT, ".staging", uuid.uuid4().hex)
+    os.makedirs(staging_dir, exist_ok=True)
+    staged = []
     try:
-        chunks = process_file(save_path, subject)
-        if not chunks:
-            raise HTTPException(status_code=500, detail="文档切分后未生成有效内容")
-        qa_system.vector_store.add_documents(chunks)
+        for raw, f in validated:
+            content = await f.read()
+            if not content:
+                raise HTTPException(status_code=400, detail=f"上传内容为空: {raw}")
+            sp = os.path.join(staging_dir, raw)
+            await asyncio.to_thread(_write_bytes, sp, content)
+            staged.append((raw, sp))
     except HTTPException:
-        # 业务性错误（如空内容已被上面拦截），直接回滚文件后原样抛
-        if os.path.exists(save_path):
-            os.remove(save_path)
+        import shutil
+        shutil.rmtree(staging_dir, ignore_errors=True)
         raise
-    except Exception as e:
-        # 处理/入库失败：删已入库索引 + 删除落盘文件，保证没有半成品
-        logger.error(f"[kb] 上传处理失败 {save_path}: {e}")
-        try:
-            qa_system.vector_store.delete_document(doc_id)
-        except Exception:
-            pass
-        if os.path.exists(save_path):
-            os.remove(save_path)
-        raise HTTPException(status_code=500, detail=f"文档处理失败: {e}")
 
+    job_id = _new_upload_job(subject, staged)
+    threading.Thread(target=_process_upload_job, args=(job_id,), daemon=True).start()
+    return {"job_id": job_id, "total": len(staged)}
+
+
+@app.get("/api/kb/uploads/{job_id}")
+async def kb_upload_status(job_id: str):
+    """查询批量上传任务进度（前端轮询）。"""
+    with UPLOAD_LOCK:
+        job = UPLOAD_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="上传任务不存在")
     return {
-        "id": doc_id,
-        "title": os.path.splitext(raw_name)[0],
-        "subject": subject,
-        "chunk_count": len(chunks),
+        "id": job["id"],
+        "subject": job["subject"],
+        "total": job["total"],
+        "done": job["done"],
+        "failed": job["failed"],
+        "finished": job["finished"],
+        "items": [
+            {k: it.get(k) for k in ("file", "status", "message", "title", "chunk_count")}
+            for it in job["items"]
+        ],
     }
 
 

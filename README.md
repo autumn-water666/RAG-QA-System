@@ -145,7 +145,7 @@ bash deploy.sh    # git pull → 前端有改动则 npm build → 后端有改�
 | WS | `/api/stream` | 流式问答（帧：`start`/`token`/`end`/`error`，`end` 带引用溯源 `sources`） |
 | POST | `/api/query` | 非流式：日常问候 / BM25 命中直答，命中率低则提示走 WebSocket |
 | GET | `/api/settings/intent` · POST | 查询 / 运行时切换意图识别开关 |
-| GET/POST/DELETE | `/api/kb/documents` | 知识库文档列表 / 上传 / 删除 |
+| GET/POST/DELETE | `/api/kb/documents` | 知识库文档列表 / 批量上传(异步) / 删除 |
 | POST | `/api/kb/rebuild` | 全量重建向量索引（幂等） |
 | GET | `/api/sources` · `/api/sessions` | 主题列表 · 会话列表 |
 

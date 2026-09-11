@@ -45,13 +45,14 @@ export const api = {
     if (subject) params.set('subject', subject)
     return (await jfetch(`/api/kb/search?${params}`)).results // -> Result[]
   },
-  uploadDocument: (file, subject) => {
-    // multipart 上传：字段 file + 可选 subject，响应见 docs/API.md §6.3
+  uploadDocuments: (files, subject) => {
+    // multipart 批量上传：字段 files（多个）+ subject；立即返回 { job_id, total }
     const fd = new FormData()
-    fd.append('file', file)
+    files.forEach((file) => fd.append('files', file))
     if (subject) fd.append('subject', subject)
     return jfetch('/api/kb/documents', { method: 'POST', body: fd })
   },
+  uploadStatus: (jobId) => jfetch(`/api/kb/uploads/${jobId}`), // -> 见 docs/API.md §6.3
   deleteDocument: (docId) => jfetch(`/api/kb/documents/${docId}`, { method: 'DELETE' }), // -> { status }
   rebuildIndex: () => jfetch('/api/kb/rebuild', { method: 'POST' }), // -> { status }
 

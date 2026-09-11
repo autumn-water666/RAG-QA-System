@@ -247,11 +247,11 @@ url      `#/kb/${doc.metadata["parent_id"]}`
 ### 6.2 GET `/api/kb/documents/{doc_id}`
 - **返回** `DocDetail`（含全文 + 有序切块），不存在返回 404。
 
-### 6.3 POST `/api/kb/documents`（上传，multipart/form-data）
-- **请求体**：文件字段 `file`，可选表单字段 `subject`（缺省落在第一个合法学科；非法值 → 400）。
-- **行为**：文件落盘到 `rag_qa/data/{subject}_data/`（同名覆盖），切块 → 向量化 → 写入 Milvus（增量）。
-  `doc_id` = 落盘绝对路径 md5。**失败整体回滚**：删除已入库索引 + 删除落盘文件，不留半成品。
-- **返回** `{ "id": "...", "title": "...", "subject": "...", "chunk_count": 12 }`
+### 6.3 POST `/api/kb/documents`（批量上传，multipart/form-data，异步）
+- **请求体**：文件字段 `files`（可多个，同名重复 append），必填表单字段 `subject`（非法值 → 400）。
+- **行为**：文件先全部校验并落盘到 `rag_qa/data/.staging/{job_id}/`，**立即返回 job_id**；切块 → 向量化 → 写入 Milvus 在后台线程执行，**不阻塞事件循环**（其它 WebSocket 问答不受影响）。完成后把文件 move 到 `rag_qa/data/{subject}_data/`（同名覆盖），`doc_id` = 落盘绝对路径 md5。单个文件失败只删该文件及其索引，不影响同批次其它文件。
+- **返回** `{ "job_id": "...", "total": 5 }`
+- **进度查询**：`GET /api/kb/uploads/{job_id}` → `{ total, done, failed, finished, items: [{file,status,message,title,chunk_count}] }`，`status` ∈ `pending/processing/done/error`，`finished=true` 表示处理完毕。任务存内存，重启后失效（重新提交即可）。
 
 ### 6.4 DELETE `/api/kb/documents/{doc_id}`
 - **行为**：下索引 + 删除磁盘源文件（源文件路径从 Milvus 块元数据取）。
