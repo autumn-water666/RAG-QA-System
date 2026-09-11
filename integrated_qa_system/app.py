@@ -257,10 +257,21 @@ async def websocket_endpoint(websocket: WebSocket):
 async def health_check():
     return {"status": "healthy"}
 
-# 获取主题/分类列表：知识库已有数据 ∪ 配置中的初始种子（去重）。不再固定默认。
+# 数据目录扫描磁盘上已有的主题（{主题}_data 子目录名）。即使某主题还没进 Milvus
+# （如索引被清、或灌库未及时执行），只要源文件还在磁盘上就不会分类凭空消失。
+def _disk_sources():
+    if not os.path.isdir(DATA_ROOT):
+        return []
+    return sorted({
+        entry[:-5] for entry in os.listdir(DATA_ROOT)
+        if entry.endswith("_data") and os.path.isdir(os.path.join(DATA_ROOT, entry))
+    })
+
+
+# 获取主题/分类列表：磁盘已有目录 ∪ 知识库已有数据 ∪ 配置中的初始种子（去重）。不再固定默认。
 @app.get("/api/sources")
 async def get_sources():
-    merged = {*qa_system.vector_store.list_sources(), *qa_system.config.VALID_SOURCES}
+    merged = {*_disk_sources(), *qa_system.vector_store.list_sources(), *qa_system.config.VALID_SOURCES}
     return {"sources": sorted(merged)}
 
 # 列出所有历史会话（供前端左栏会话列表切换）

@@ -427,12 +427,14 @@ class VectorStore:
 
         "已有数据的保留"：只要库里还有某主题的块，它就会出现在这里；
         上传到新主题后，新主题也随之上浮。查询失败时返回空列表，不抛异常。
+
+        说明：不用 pymilvus 的 query_distinct（部分版本缺失），改 query 全字段拉回后内存去重，全版本兼容。
         """
         try:
-            rows = self.client.query_distinct(
+            rows = self.client.query(
                 collection_name=self.collection_name,
                 output_fields=["source"],
-                limit=16384,
+                limit=16000,
             )
             return sorted({r.get("source") for r in rows if r.get("source")})
         except Exception as e:
