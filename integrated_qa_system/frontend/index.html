@@ -3,7 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>EduRAG 智慧问答系统</title>
+    <title>智能问答系统</title>
+    <script>
+      // 首帧前应用已保存的主题，避免刷新白一下（light/dark/auto）
+      (function () {
+        try {
+          var m = localStorage.getItem('rag_theme') || 'auto'
+          var dark = m === 'dark' || (m === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

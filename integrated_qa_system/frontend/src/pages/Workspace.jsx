@@ -5,16 +5,15 @@ import MessageBubble from '../components/MessageBubble'
 import Composer from '../components/Composer'
 import { useToast } from '../components/Toast'
 
-const WELCOME = '您好！我是智能问答助手，有什么我可以帮您的吗？'
+const WELCOME = '您好！我是智能问答助手。您可以向我提问，我会先在知识库里检索相关内容，再结合上下文作答，并给出参考来源。'
 
 export default function Workspace() {
   const toast = useToast()
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('eduraq_sidebar') === '1')
   const [sessionId, setSessionId] = useState(null)
   const [sessions, setSessions] = useState([])
   const [sources, setSources] = useState([])
   const [sourceFilter, setSourceFilter] = useState('')
-  const [echoOn, setEchoOn] = useState(true)
+  const [followUp, setFollowUp] = useState(true)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
@@ -27,13 +26,9 @@ export default function Workspace() {
   const nextId = () => `m${++idRef.current}`
 
   useEffect(() => {
-    localStorage.setItem('eduraq_sidebar', collapsed ? '1' : '0')
-  }, [collapsed])
-
-  useEffect(() => {
     loadSessions()
     loadSources()
-    const saved = localStorage.getItem('eduraq_session')
+    const saved = localStorage.getItem('rag_session')
     if (saved) {
       setSessionId(saved)
       setMessages([{ id: nextId(), role: 'assistant', text: WELCOME, sources: [] }])
@@ -48,6 +43,21 @@ export default function Workspace() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // [N] 引用角标：点击滚动到本条消息对应的来源卡片
+  function onMessagesClick(e) {
+    const cite = e.target.closest('.cite')
+    if (!cite) return
+    const card = document.querySelector(`.source-card[data-cite="${cite.dataset.cite}"]`)
+    if (!card) return
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    card.style.borderColor = 'var(--brand-500)'
+    card.style.boxShadow = '0 0 0 4px var(--brand-glow), var(--shadow-md)'
+    setTimeout(() => {
+      card.style.borderColor = ''
+      card.style.boxShadow = ''
+    }, 1400)
+  }
 
   async function loadSessions() {
     try {
@@ -85,7 +95,7 @@ export default function Workspace() {
   async function createSession() {
     try {
       const { session_id } = await api.createSession()
-      localStorage.setItem('eduraq_session', session_id)
+      localStorage.setItem('rag_session', session_id)
       setSessionId(session_id)
       setMessages([{ id: nextId(), role: 'assistant', text: WELCOME, sources: [] }])
       loadHistory(session_id)
@@ -97,7 +107,7 @@ export default function Workspace() {
 
   function selectSession(sid) {
     if (sid === sessionId || isStreaming) return
-    localStorage.setItem('eduraq_session', sid)
+    localStorage.setItem('rag_session', sid)
     setSessionId(sid)
     setMessages([{ id: nextId(), role: 'assistant', text: WELCOME, sources: [] }])
     loadHistory(sid)
@@ -175,7 +185,7 @@ export default function Workspace() {
         JSON.stringify({
           query: q,
           source_filter: sourceFilter || null,
-          session_id: echoOn ? sessionId : null,
+          session_id: followUp ? sessionId : null,
         }),
       )
     }
@@ -234,56 +244,34 @@ export default function Workspace() {
 
   const currentMissing = sessionId && !sessions.some((s) => s.session_id === sessionId)
   const sessionList = [
-    ...(currentMissing ? [{ session_id: sessionId, preview: '（新会话）' }] : []),
+    ...(currentMissing ? [{ session_id: sessionId, preview: '新会话' }] : []),
     ...sessions,
   ]
 
   return (
-    <div className={`layout${collapsed ? ' collapsed' : ''}`}>
-      <aside className="sidebar">
-        <div className="sidebar-head">
-          <span className="sidebar-title">会话</span>
-          <button
-            className="icon-btn"
-            onClick={() => setCollapsed(true)}
-            title="收起侧栏"
-            aria-label="收起侧栏"
-          >
-            ‹
-          </button>
-        </div>
+    <div className="chat-layout">
+      <aside className="chat-side">
         <SessionTab
-          sessions={sessions}
-          sessionId={sessionId}
           sessionList={sessionList}
+          sessionId={sessionId}
           sourceFilter={sourceFilter}
           sources={sources}
+          followUp={followUp}
           isStreaming={isStreaming}
           onSelectSession={selectSession}
           onCreate={createSession}
           onClear={clearHistory}
           onFilterChange={setSourceFilter}
+          onFollowUpChange={setFollowUp}
         />
       </aside>
 
-      <main className="chat">
-        {collapsed && (
-          <button
-            className="sidebar-reopen"
-            onClick={() => setCollapsed(false)}
-            title="展开侧栏"
-            aria-label="展开侧栏"
-          >
-            ›
-          </button>
-        )}
+      <section className="chat-main" onClick={onMessagesClick}>
         <div className="messages">
-          <div className="chat-inner">
-            {messages.map((m) => (
-              <MessageBubble key={m.id} msg={m} />
-            ))}
-            <div ref={chatEndRef} />
-          </div>
+          {messages.map((m) => (
+            <MessageBubble key={m.id} msg={m} />
+          ))}
+          <div ref={chatEndRef} />
         </div>
 
         <Composer
@@ -292,10 +280,10 @@ export default function Workspace() {
           isStreaming={isStreaming}
           onSend={send}
           onStop={stop}
-          echoOn={echoOn}
-          setEchoOn={setEchoOn}
+          followUp={followUp}
+          sourceFilter={sourceFilter}
         />
-      </main>
+      </section>
     </div>
   )
 }

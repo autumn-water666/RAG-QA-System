@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../lib/api'
+import { IconChevronLeft, IconAlert } from '../lib/icons'
 
-// 文档详情页：承接引用溯源可视化。
-// 展示全文 + 有序切块，供核对「引用溯源」的出处。
 export default function DocPage() {
   const { docId } = useParams()
   const [doc, setDoc] = useState(null)
@@ -17,44 +16,62 @@ export default function DocPage() {
       .getDocument(docId)
       .then((d) => live && setDoc(d))
       .catch((e) => live && setError(e.message))
-    return () => {
-      live = false
-    }
+    return () => { live = false }
   }, [docId])
 
+  if (error) {
+    return (
+      <div className="page"><div className="page-inner" style={{ maxWidth: 920 }}>
+        <div className="empty">
+          <div className="empty-icon"><IconAlert /></div>
+          <div className="empty-title">加载失败</div>
+          <div className="empty-sub">{error}</div>
+          <div style={{ marginTop: 20 }}><Link className="btn btn-ghost" to="/kb"><IconChevronLeft /> 返回知识库</Link></div>
+        </div>
+      </div></div>
+    )
+  }
+
+  if (!doc) {
+    return (
+      <div className="page"><div className="page-inner" style={{ maxWidth: 920 }}>
+        <div className="empty"><div className="empty-sub">加载中…</div></div>
+      </div></div>
+    )
+  }
+
   return (
-    <div className="doc-page">
-      <div className="doc-toolbar">
-        <Link to="/kb" className="back-link">← 返回知识库</Link>
-        <span className="sub-title">文档详情</span>
+    <div className="page"><div className="page-inner" style={{ maxWidth: 920 }}>
+      <Link to="/kb" className="back-link" style={{ fontSize: 13, color: 'var(--text-dim)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <IconChevronLeft /> 返回知识库
+      </Link>
+
+      <div className="detail-head" style={{ marginTop: 18 }}>
+        <div className="detail-title">{doc.title}</div>
+        <div className="detail-meta">
+          <span className="tag">{doc.subject}</span>
+          <span>{doc.chunks.length} 个切块</span>
+          <span>{doc.updated_at?.slice(0, 19).replace('T', ' ')}</span>
+        </div>
       </div>
-      <div className="doc-body">
-        {error ? (
-          <p className="kb-hint">加载失败：{error}</p>
-        ) : !doc ? (
-          <p className="kb-hint">加载中…</p>
-        ) : (
-          <>
-            <h2>{doc.title}</h2>
-            <p className="doc-meta">
-              {doc.subject} · {doc.chunks.length} 块 · {doc.updated_at?.slice(0, 19).replace('T', ' ')}
-            </p>
-            <details className="doc-raw" open>
-              <summary>全文（{doc.content.length} 字）</summary>
-              <pre>{doc.content}</pre>
-            </details>
-            <h3 className="doc-chunk-title">切块（{doc.chunks.length}）</h3>
-            <ul className="doc-chunks">
-              {doc.chunks.map((c, i) => (
-                <li key={c.id}>
-                  <span className="doc-chunk-idx">{i + 1}</span>
-                  <p className="doc-chunk-text">{c.text}</p>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+
+      <div className="detail-section-title">全文</div>
+      <div className="content-box">{doc.content}</div>
+
+      <div className="detail-section-title">切块列表（{doc.chunks.length}）</div>
+      <div className="chunk-list">
+        {doc.chunks.map((c, i) => (
+          <div key={c.id} className="chunk">
+            <div className="chunk-no">{i + 1}</div>
+            <div className="chunk-body">
+              <div className="chunk-text">{c.text}</div>
+              {c.score != null && (
+                <div style={{ marginTop: 9 }}><span className="chunk-score">命中分 {c.score}</span></div>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
-    </div>
+    </div></div>
   )
 }

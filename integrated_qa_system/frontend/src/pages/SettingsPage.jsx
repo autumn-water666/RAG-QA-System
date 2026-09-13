@@ -1,115 +1,104 @@
-// 设置页：意图识别开关 / 后端连接状态 / 索引维护
+// 设置页：意图识别开关（设计稿核心）+ 索引维护
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { useToast } from '../components/Toast'
 
 export default function SettingsPage({ theme }) {
+  const toast = useToast()
   const [intent, setIntent] = useState(null) // null=加载中
-  const [loadErr, setLoadErr] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [saveMsg, setSaveMsg] = useState('')
   const [rebuilding, setRebuilding] = useState(false)
-  const [rebuildMsg, setRebuildMsg] = useState('')
 
   // 进入页面加载当前开关状态
   useEffect(() => {
     let alive = true
     api.getIntentClassify()
       .then((v) => alive && setIntent(v))
-      .catch((e) => alive && setLoadErr(String(e.message || e)))
+      .catch((e) => alive && toast.error(`读取意图识别开关失败：${e.message || e}`))
     return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 切换开关：调后端运行时重编译编排图，立即生效
+  async function toggleIntent() {
+    const next = !intent
+    try {
+      const v = await api.setIntentClassify(next)
+      setIntent(v)
+      toast.success(v ? '意图识别已开启：按「通用知识 / 专业咨询」路由。' : '意图识别已关闭：所有问题一律走检索。')
+    } catch (e) {
+      toast.error(`切换失败：${e.message || e}`)
+    }
+  }
 
   // 重建知识库索引（危险操作，弹窗确认）
   async function handleRebuild() {
     if (!window.confirm('确定重建整个知识库索引？现有向量数据会被覆盖重建，此操作不可撤销。')) return
     setRebuilding(true)
-    setRebuildMsg('')
     try {
       const r = await api.rebuildIndex()
-      setRebuildMsg(`重建完成：${r.status || 'OK'}`)
+      toast.success(`重建完成：${r.status || 'OK'}（共 ${r.total_chunks ?? '?'} 块）`)
     } catch (e) {
-      setRebuildMsg(`重建失败：${e.message || e}`)
+      toast.error(`重建失败：${e.message || e}`)
     } finally {
       setRebuilding(false)
     }
   }
 
-  // 切换开关：调后端运行时重编译编排图，立即生效
-  async function toggleIntent() {
-    const next = !intent
-    setSaving(true)
-    setSaveMsg('')
-    try {
-      const v = await api.setIntentClassify(next)
-      setIntent(v)
-      setSaveMsg(v ? '已开启：按「通用知识 / 专业咨询」路由。' : '已关闭：所有问题一律走检索。')
-    } catch (e) {
-      setSaveMsg(`切换失败：${e.message || e}`)
-    } finally {
-      setSaving(false)
-    }
-  }
-
   return (
-    <div className="settings-page">
-      <h2>设置</h2>
-
-      <section className="card">
-        <h3>问答智能</h3>
-        <div className="settings-row">
-          <div>
-            <label>意图识别</label>
-            <p className="kb-hint">
-              开启后系统先把问题分为「通用知识 / 专业咨询」再路由：
-              通用知识直接走大模型，专业咨询才检索知识库。
-              关闭后所有问题一律走知识库检索（RAG）。
-            </p>
-          </div>
-          <button
-            className={`toggle ${intent ? 'on' : 'off'}`}
-            onClick={toggleIntent}
-            disabled={saving || intent === null}
-            aria-pressed={intent}
-            aria-label="意图识别开关"
-          >
-            {intent === null ? '…' : intent ? '开' : '关'}
-          </button>
+    <div className="page"><div className="page-inner settings-wrap">
+      <div className="page-head">
+        <div>
+          <div className="page-title">设置</div>
+          <div className="page-sub">运行时配置，修改后立即生效</div>
         </div>
-        {loadErr && <p className="kb-upload-msg error">{loadErr}</p>}
-        {saveMsg && <p className="kb-upload-msg">{saveMsg}</p>}
-      </section>
+      </div>
 
-      <section className="card">
-        <h3>外观</h3>
-        <p className="kb-hint">
-          当前主题：<strong>{theme === 'dark' ? '墨绿深色' : '蓝白浅色'}</strong>。
-          右上角按钮切换（自动跟随系统 / 浅色 / 深色三态循环）。
-        </p>
-      </section>
+      <div className="setting-card">
+        <div>
+          <div className="setting-name">意图识别</div>
+          <div className="setting-desc">
+            开启后，后端会先判断问题属于「通用闲聊」还是「专业咨询」，再决定是否走知识库检索流程。
+            关闭则所有问题都按专业咨询处理（始终检索）。
+          </div>
+        </div>
+        <div
+          className={`switch${intent ? ' on' : ''}`}
+          role="switch"
+          aria-checked={!!intent}
+          aria-label="意图识别开关"
+          onClick={intent === null ? undefined : toggleIntent}
+        />
+      </div>
 
-      <section className="card">
-        <h3>后端连接</h3>
-        <ul className="settings-list">
-          <li>接口基础路径 <code>${''}</code>（同域部署）</li>
-          <li>状态检测接口待接入 <code>GET /health</code></li>
-        </ul>
-      </section>
+      <div style={{ marginTop: 16, fontSize: 12.5, color: 'var(--text-mute)' }}>
+        当前状态：
+        <strong style={{ color: 'var(--text)' }}>{intent === null ? '加载中…' : (intent ? '已开启' : '已关闭')}</strong>
+        {intent === null ? '' : ' · 对应接口 GET/POST /api/settings/intent'}
+      </div>
 
-      <section className="card">
-        <h3>维护</h3>
-        <button
-          className="danger-btn"
-          onClick={handleRebuild}
-          disabled={rebuilding}
-        >
-          {rebuilding ? '重建中…' : '重建知识库索引'}
+      <div className="setting-card" style={{ marginTop: 28 }}>
+        <div>
+          <div className="setting-name">重建知识库索引</div>
+          <div className="setting-desc">
+            重扫 data 目录全部原始文档，重新分块 + 向量化并幂等写入向量库。危险操作，需二次确认。
+          </div>
+        </div>
+        <button className="btn btn-ghost" onClick={handleRebuild} disabled={rebuilding}>
+          {rebuilding ? '重建中…' : '重建索引'}
         </button>
-        <p className="kb-hint">
-          重扫 data 目录全部原始文档，重新分块 + 向量化并幂等写入向量库。
-          耗时取决于文档量，期间可正常检索。危险操作，需二次确认。
-        </p>
-        {rebuildMsg && <p className="kb-upload-msg">{rebuildMsg}</p>}
-      </section>
-    </div>
+      </div>
+
+      <div style={{ marginTop: 28 }}>
+        <div className="setting-card">
+          <div>
+            <div className="setting-name">外观</div>
+            <div className="setting-desc">
+              当前主题：<strong>{theme === 'dark' ? '暗色' : '亮色'}</strong>。
+              右上角按钮切换（自动跟随系统 / 亮色 / 暗色三态循环）。
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div>
   )
 }

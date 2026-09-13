@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 
 // 主题只存三个状态：'light' | 'dark' | 'auto'（跟随系统）
 // 应用到 <html data-theme> 上，所有样式走 CSS 变量，App.css 里定义两套。
-const KEY = 'eduraq_theme'
+const KEY = 'rag_theme'
 
 function resolveTheme(mode, systemDark) {
   if (mode === 'auto') return systemDark ? 'dark' : 'light'
