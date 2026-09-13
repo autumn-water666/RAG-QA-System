@@ -136,9 +136,9 @@ type DocDetail = DocSummary & {
 ### 5.2 GET `/api/sources`
 **返回**
 ```json
-{ "sources": ["ai", "java", "test", "ops", "bigdata"] }
+{ "sources": ["ai", "java"] }
 ```
-来源：`Config().VALID_SOURCES`（config.ini 中的 `valid_sources`）。
+来源（**数据驱动**，合并去重）：磁盘 `rag_qa/data/{subject}_data` 实际目录 + Milvus 中已有的 `source` 字段 + config.ini `valid_sources`（可选种子，缺省为空）。**无固定默认分类**，主题由用户上传/新建产生。
 
 ### 5.3 POST `/api/create_session`
 无请求体。
@@ -283,6 +283,8 @@ url      `#/kb/${doc.metadata["parent_id"]}`
 | `DELETE /api/history/{id}` | `api.clearHistory(sid)` |
 | `DELETE /api/kb/documents/{id}` | `api.deleteDocument(docId)` |
 | `POST /api/kb/rebuild` | `api.rebuildIndex()` |
+| `POST /api/kb/documents` | `api.uploadDocuments(files, subject)` → `{ job_id, total }` |
+| `GET /api/kb/uploads/{job_id}` | `api.uploadStatus(jobId)` → 上传任务进度 |
 | `GET /api/settings/intent` | `api.getIntentClassify()` → `bool` |
 | `POST /api/settings/intent` | `api.setIntentClassify(enabled)` → `bool` |
 | `WS /api/stream` | `api.wsStreamUrl()` → 连接串 |

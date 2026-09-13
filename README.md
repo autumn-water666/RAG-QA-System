@@ -187,6 +187,7 @@ LLM 在 analyze 阶段为每次查询自动选择最适合的向量检索增强�
 ## 文档
 
 - [docs/API.md](docs/API.md) — 接口契约
+- [docs/FRONTEND.md](docs/FRONTEND.md) — 前端开发说明(面向从零开发的对接者)
 - [docs/DEV.md](docs/DEV.md) — 开发文档
 
 ## License

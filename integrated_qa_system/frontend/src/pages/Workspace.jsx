@@ -3,10 +3,13 @@ import { api } from '../lib/api'
 import SessionTab from '../components/SessionTab'
 import MessageBubble from '../components/MessageBubble'
 import Composer from '../components/Composer'
+import { useToast } from '../components/Toast'
 
 const WELCOME = '您好！我是智能问答助手，有什么我可以帮您的吗？'
 
 export default function Workspace() {
+  const toast = useToast()
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('eduraq_sidebar') === '1')
   const [sessionId, setSessionId] = useState(null)
   const [sessions, setSessions] = useState([])
   const [sources, setSources] = useState([])
@@ -22,6 +25,10 @@ export default function Workspace() {
   const chatEndRef = useRef(null)
   const idRef = useRef(0)
   const nextId = () => `m${++idRef.current}`
+
+  useEffect(() => {
+    localStorage.setItem('eduraq_sidebar', collapsed ? '1' : '0')
+  }, [collapsed])
 
   useEffect(() => {
     loadSessions()
@@ -47,7 +54,7 @@ export default function Workspace() {
       const list = await api.getSessions()
       setSessions(list || [])
     } catch (e) {
-      console.error('加载会话列表失败', e)
+      toast.error(`加载会话列表失败：${e.message || e}`, 4000)
     }
   }
 
@@ -56,7 +63,7 @@ export default function Workspace() {
       const list = await api.getSources()
       setSources(list || [])
     } catch (e) {
-      console.error('加载学科失败', e)
+      toast.error(`加载主题失败：${e.message || e}`, 4000)
     }
   }
 
@@ -71,7 +78,7 @@ export default function Workspace() {
       }
       setMessages(msgs)
     } catch (e) {
-      console.error('加载历史失败', e)
+      toast.error(`加载历史失败：${e.message || e}`, 4000)
     }
   }
 
@@ -84,7 +91,7 @@ export default function Workspace() {
       loadHistory(session_id)
       loadSessions()
     } catch (e) {
-      console.error('创建会话失败', e)
+      toast.error(`创建会话失败：${e.message || e}`, 4000)
     }
   }
 
@@ -102,8 +109,9 @@ export default function Workspace() {
       await api.clearHistory(sessionId)
       setMessages([{ id: nextId(), role: 'assistant', text: '历史已清除，有什么我可以帮您的吗？', sources: [] }])
       loadSessions()
+      toast.success('历史已清除')
     } catch (e) {
-      console.error('清除历史失败', e)
+      toast.error(`清除历史失败：${e.message || e}`)
     }
   }
 
@@ -212,6 +220,7 @@ export default function Workspace() {
     ws.onerror = (e) => {
       console.error('WebSocket 错误', e)
       flushStream()
+      toast.error('连接失败，请确认服务已启动')
       setMessages((prev) => {
         const next = [...prev]
         const last = next[next.length - 1]
@@ -230,8 +239,19 @@ export default function Workspace() {
   ]
 
   return (
-    <div className="layout">
+    <div className={`layout${collapsed ? ' collapsed' : ''}`}>
       <aside className="sidebar">
+        <div className="sidebar-head">
+          <span className="sidebar-title">会话</span>
+          <button
+            className="icon-btn"
+            onClick={() => setCollapsed(true)}
+            title="收起侧栏"
+            aria-label="收起侧栏"
+          >
+            ‹
+          </button>
+        </div>
         <SessionTab
           sessions={sessions}
           sessionId={sessionId}
@@ -247,11 +267,23 @@ export default function Workspace() {
       </aside>
 
       <main className="chat">
+        {collapsed && (
+          <button
+            className="sidebar-reopen"
+            onClick={() => setCollapsed(false)}
+            title="展开侧栏"
+            aria-label="展开侧栏"
+          >
+            ›
+          </button>
+        )}
         <div className="messages">
-          {messages.map((m) => (
-            <MessageBubble key={m.id} msg={m} />
-          ))}
-          <div ref={chatEndRef} />
+          <div className="chat-inner">
+            {messages.map((m) => (
+              <MessageBubble key={m.id} msg={m} />
+            ))}
+            <div ref={chatEndRef} />
+          </div>
         </div>
 
         <Composer
