@@ -159,8 +159,18 @@ export default function Workspace() {
       const next = [...prev]
       const last = next[next.length - 1]
       if (last && last.role === 'assistant' && last.streaming) {
-        next[next.length - 1] = { ...last, text: accRef.current, streaming: false, loading: false }
+        next[next.length - 1] = { ...last, text: accRef.current, streaming: false, loading: false, stage: '' }
       }
+      return next
+    })
+  }
+
+  // 就地更新最后一条 assistant 消息的指定字段（用于阶段指示 stage 等）
+  function setLastMsg(fn) {
+    setMessages((prev) => {
+      const next = [...prev]
+      const last = next[next.length - 1]
+      if (last && last.role === 'assistant') next[next.length - 1] = fn(last)
       return next
     })
   }
@@ -172,7 +182,7 @@ export default function Workspace() {
     setMessages((prev) => [
       ...prev,
       { id: nextId(), role: 'user', text: q },
-      { id: nextId(), role: 'assistant', text: '', loading: true, streaming: true, sources: [] },
+      { id: nextId(), role: 'assistant', text: '', loading: true, streaming: true, sources: [], stage: '' },
     ])
     accRef.current = ''
 
@@ -198,6 +208,10 @@ export default function Workspace() {
       }
       if (data.type === 'token') {
         push(accRef.current + data.token)
+        // 已开始出字，撤下步骤指示
+        setLastMsg((m) => (m && { ...m, stage: '' }))
+      } else if (data.type === 'stage') {
+        setLastMsg((m) => (m && { ...m, stage: data.stage, loading: true, streaming: true }))
       } else if (data.type === 'end') {
         if (data.sources) {
           setMessages((prev) => {

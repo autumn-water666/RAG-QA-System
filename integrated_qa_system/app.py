@@ -200,7 +200,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 except Exception as e:
                     # 生成中途异常也要保证发结束标志，避免前端永远等待
                     logger.error(f"[ws] 流式生成异常: {e}")
-                    asyncio.run_coroutine_threadsafe(out_q.put(("", True, [])), loop)
+                    asyncio.run_coroutine_threadsafe(out_q.put(("", True, [], None)), loop)
 
             worker = threading.Thread(target=_produce, daemon=True)
             worker.start()
@@ -208,9 +208,16 @@ async def websocket_endpoint(websocket: WebSocket):
             # 最后一条 (is_complete=True) 的记录来源（引用溯源），用于 end 帧透出
             end_sources = []
             while True:
-                token, is_complete, sources = await out_q.get()
+                token, is_complete, sources, stage = await out_q.get()
                 if sources:
                     end_sources = sources
+                if stage and websocket.client_state == websocket.client_state.CONNECTED:
+                    # 阶段指示：正在执行哪一步（意图识别 / 检索 / 生成）透给前端
+                    await websocket.send_json({
+                        "type": "stage",
+                        "stage": stage,
+                        "session_id": session_id
+                    })
                 if token and websocket.client_state == websocket.client_state.CONNECTED:
                     # 发送 token 数据
                     await websocket.send_json({

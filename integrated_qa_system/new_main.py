@@ -348,7 +348,7 @@ class IntegratedQASystem:
         # 累积 token，结束后写历史
         collected = []
         end_sources = []
-        for token, is_complete, sources in _stream_from_compiled(
+        for token, is_complete, sources, stage in _stream_from_compiled(
                 self.qa_graph, query, source_filter=source_filter, history=history):
             collected.append(token)
             if sources:
@@ -360,7 +360,7 @@ class IntegratedQASystem:
                     self.update_session_history(session_id, query, answer, end_sources)
                 processing_time = time.time() - start_time
                 self.logger.info(f"查询处理耗时 {processing_time:.2f}秒")
-            yield token, is_complete, sources
+            yield token, is_complete, sources, stage
 
 
 def main():

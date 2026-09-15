@@ -274,14 +274,25 @@ def _build_sources(docs) -> list:
     return sources
 
 
-def _stream_from_compiled(compiled, query, source_filter=None, history=None):
-    """从已编译的图以 (token, is_complete, sources) 形式流式产出。
+# 图节点 -> 面向用户的阶段说明，随 updates 流推给前端做进行中指示
+STAGE_MAP = {
+    "classify": "正在识别问题类型",
+    "analyze": "正在理解问题",
+    "bm25": "正在快速检索",
+    "retrieve": "正在知识库检索",
+    "generate": "正在整理回答",
+}
 
-    - generate 节点每个 token 经 LangGraph custom 流产出 (token, False, [])
-    - 非 LLM 直答终端（BM25 命中 / 未找到）一次性产出整串 (answer, False, [])
+
+def _stream_from_compiled(compiled, query, source_filter=None, history=None):
+    """从已编译的图以 (token, is_complete, sources, stage) 形式流式产出。
+
+    - generate 节点每个 token 经 LangGraph custom 流产出 (token, False, [], None)
+    - 非 LLM 直答终端（BM25 命中 / 未找到）一次性产出整串 (answer, False, [], None)
     - RAG 路径 retrieve 后持有 context_docs，结束时首个 is_complete=True 的
       产出携带 sources（引用溯源），前端据此渲染「参考来源」
-    - 全部结束产出 ("", True, sources) 作为结束标记
+    - 节点切换时产出阶段说明 (_, False, [], stage)，前端据此展示"正在进行哪一步"
+    - 全部结束产出 ("", True, sources, None) 作为结束标记
     """
     inp = _to_state_input(query, source_filter, history)
     terminal_nodes = {"set_not_found"}
@@ -289,18 +300,21 @@ def _stream_from_compiled(compiled, query, source_filter=None, history=None):
     saw_token = False
     for mode, chunk in compiled.stream(inp, stream_mode=["updates", "custom"]):
         if mode == "custom":
-            yield chunk, False, []
+            yield chunk, False, [], None
             saw_token = True
         elif mode == "updates":
             for node, update in (chunk or {}).items():
                 if isinstance(update, dict) and update.get("context_docs"):
                     context_docs = update["context_docs"]
+                stage = STAGE_MAP.get(node)
+                if stage:
+                    yield "", False, [], stage
                 if node in terminal_nodes:
-                    yield update.get("answer", ""), False, []
-                    yield "", True, _build_sources(context_docs)
+                    yield update.get("answer", ""), False, [], None
+                    yield "", True, _build_sources(context_docs), None
                     return
     if saw_token:
-        yield "", True, _build_sources(context_docs)
+        yield "", True, _build_sources(context_docs), None
 
 
 def stream_qa_graph(rag_system, query, source_filter=None, history=None,

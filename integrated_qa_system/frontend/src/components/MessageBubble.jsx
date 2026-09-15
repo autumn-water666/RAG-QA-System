@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Marked } from 'marked'
 import DOMPurify from 'dompurify'
 
@@ -16,28 +17,48 @@ function renderMarkdown(text, sources) {
 export default function MessageBubble({ msg }) {
   const isUser = msg.role === 'user'
   const hasSources = !isUser && msg.sources && msg.sources.length
+  const [openSources, setOpenSources] = useState(true)
+  // 出字前显示"正在进行哪一步"；token 到达后 text 非空，自动撤下
+  const showStage = !isUser && msg.stage && !msg.text
 
   return (
     <div className={`msg ${isUser ? 'user' : 'assistant'}`} data-mid={msg.id}>
       <div className="avatar">{isUser ? '我' : 'AI'}</div>
       <div className="msg-col">
         <div className="bubble">
+          {showStage && (
+            <div className="stage-indicator">
+              <span className="stage-spinner" aria-hidden="true" />
+              <span>{msg.stage}</span>
+            </div>
+          )}
           <div className="msg-body" dangerouslySetInnerHTML={renderMarkdown(msg.text, msg.sources)} />
           {!isUser && msg.streaming && <span className="cursor-blink" aria-hidden="true" />}
         </div>
         {hasSources && (
           <div className="sources-block">
-            <div className="sources-label">参考来源 · {msg.sources.length} 条</div>
-            {msg.sources.map((s) => (
-              <a key={s.index} className="source-card" data-cite={s.index} href={s.url || '#'}>
-                <div className="source-idx">{s.index}</div>
-                <div className="source-body">
-                  <div className="source-title">{s.title || '未命名文档'}</div>
-                  {s.snippet && <div className="source-snippet">{s.snippet}</div>}
-                  <div className="source-subject">主题：{s.subject}</div>
-                </div>
-              </a>
-            ))}
+            <button
+              className="sources-toggle"
+              onClick={() => setOpenSources((o) => !o)}
+              aria-expanded={openSources}
+            >
+              <span>参考来源 · {msg.sources.length} 条</span>
+              <span className={`sources-caret${openSources ? ' open' : ''}`} aria-hidden="true">▾</span>
+            </button>
+            {openSources && (
+              <div className="sources-list">
+                {msg.sources.map((s) => (
+                  <a key={s.index} className="source-card" data-cite={s.index} href={s.url || '#'}>
+                    <div className="source-idx">{s.index}</div>
+                    <div className="source-body">
+                      <div className="source-title">{s.title || '未命名文档'}</div>
+                      {s.snippet && <div className="source-snippet">{s.snippet}</div>}
+                      <div className="source-subject">主题：{s.subject}</div>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
