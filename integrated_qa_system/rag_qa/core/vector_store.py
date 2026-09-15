@@ -396,7 +396,7 @@ class VectorStore:
         expr = " and ".join(expr_parts) if expr_parts else None
         kwargs = dict(
             collection_name=self.collection_name,
-            output_fields=["id", "text", "parent_id", "source", "doc_id", "title", "file_path", "timestamp"],
+            output_fields=["id", "text", "parent_id", "parent_content", "source", "doc_id", "title", "file_path", "timestamp"],
             # Milvus 空表达式必须带 limit（上限 16384），否则直接 500
             limit=limit or 16000,
         )
@@ -462,7 +462,8 @@ class VectorStore:
             "chunk_count": len(rows),
             "content": "\n\n".join(text for _, text in ordered),
             "chunks": [{"id": r.get("id"), "text": r.get("text"),
-                        "parent_id": r.get("parent_id")} for r in rows],
+                        "parent_id": r.get("parent_id"),
+                        "parent_content": r.get("parent_content") or r.get("text")} for r in rows],
         }
 
     def search_documents(self, query: str, subject=None, k=10) -> list[dict]:

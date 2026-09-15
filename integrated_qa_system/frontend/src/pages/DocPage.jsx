@@ -16,29 +16,43 @@ export default function DocPage() {
     setError('')
     api
       .getDocument(docId)
-      .then((d) => {
-        if (!live) return
-        setDoc(d)
-        // 带 ?c=parent_id 时，滚动并高亮对应切块
-        if (focusPid && d && d.chunks.some((c) => c.parent_id === focusPid)) {
-          setTimeout(() => {
-            const el = document.querySelector(`.chunk[data-pid="${focusPid}"]`)
-            if (!el) return
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-            el.style.outline = '2px solid var(--brand-500)'
-            el.style.outlineOffset = '2px'
-            setTimeout(() => {
-              el.style.outline = ''
-              el.style.outlineOffset = ''
-            }, 1800)
-          }, 60)
-        }
-      })
+      .then((d) => live && setDoc(d))
       .catch((e) => live && setError(e.message))
     return () => { live = false }
-    // focusPid 只在跳转时生效，不参与重跑依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId])
+
+  // 命中的父块：引用溯源定位展示的是整块父内容，而非单个子切块
+  const focusChunks = focusPid ? (doc?.chunks || []).filter((c) => c.parent_id === focusPid) : []
+  const parentText = focusChunks[0]?.parent_content || ''
+
+  // 引用溯源定位：依赖 doc 而非 docId，渲染提交后切块 DOM 必已存在，
+  // 不再用固定 setTimeout 撞渲染时机（大文档渲染慢极易 miss）。
+  // 高亮该父块下的所有子切块（同一 parent_id 的一组），对应"全文"也一致。
+  useEffect(() => {
+    if (!focusPid || !doc) return
+    const els = document.querySelectorAll(`.chunk[data-pid="${focusPid}"]`)
+    let first = null
+    els.forEach((el) => {
+      if (!first) first = el
+      el.style.outline = '2px solid var(--brand-500)'
+      el.style.outlineOffset = '2px'
+    })
+    if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const t = setTimeout(() => {
+      els.forEach((el) => {
+        el.style.outline = ''
+        el.style.outlineOffset = ''
+      })
+    }, 2200)
+    return () => {
+      clearTimeout(t)
+      els.forEach((el) => {
+        el.style.outline = ''
+        el.style.outlineOffset = ''
+      })
+    }
+  }, [doc, focusPid])
 
   if (error) {
     return (
@@ -80,6 +94,14 @@ export default function DocPage() {
       <div className="content-box">{doc.content}</div>
 
       <div className="detail-section-title">切块列表（{doc.chunks.length}）</div>
+
+      {parentText && (
+        <div className="hit-parent">
+          <div className="hit-parent-label">本次命中的内容片段</div>
+          <div className="hit-parent-body">{parentText}</div>
+        </div>
+      )}
+
       <div className="chunk-list">
         {doc.chunks.map((c, i) => (
           <div key={c.id} className="chunk" data-pid={c.parent_id}>
