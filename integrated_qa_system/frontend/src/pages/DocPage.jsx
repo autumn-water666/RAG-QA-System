@@ -32,13 +32,13 @@ export default function DocPage() {
   useEffect(() => {
     if (!focusPid || !doc) return
     const els = document.querySelectorAll(`.chunk[data-pid="${focusPid}"]`)
-    let first = null
     els.forEach((el) => {
-      if (!first) first = el
       el.style.outline = '2px solid var(--brand-500)'
       el.style.outlineOffset = '2px'
     })
-    if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // 滚动锚点对准「本次命中的内容片段」父块框本身，而非下方的子块
+    const anchor = document.getElementById('hit-parent') || els[0]
+    if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'center' })
     const t = setTimeout(() => {
       els.forEach((el) => {
         el.style.outline = ''
@@ -96,7 +96,7 @@ export default function DocPage() {
       <div className="detail-section-title">切块列表（{doc.chunks.length}）</div>
 
       {parentText && (
-        <div className="hit-parent">
+        <div className="hit-parent" id="hit-parent">
           <div className="hit-parent-label">本次命中的内容片段</div>
           <div className="hit-parent-body">{parentText}</div>
         </div>
