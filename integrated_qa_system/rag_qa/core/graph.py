@@ -261,12 +261,15 @@ def _build_sources(docs) -> list:
         snippet = (doc.page_content or "").strip()[:80]
         if not snippet:
             snippet = (md.get("parent_content") or "")[:80]
+        # 检索落点是父块：带 parent_id 作精确锚点，DocPage 按此定位并高亮对应切块
+        parent_id = md.get("parent_id")
         sources.append({
             "index": idx,
             "title": title,
             "subject": subject,
             "snippet": snippet,
-            "url": f"#/kb/{doc_id}",
+            "parent_id": parent_id,
+            "url": f"#/kb/{doc_id}?c={parent_id}" if parent_id else f"#/kb/{doc_id}",
         })
     return sources
 

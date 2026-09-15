@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { IconChevronLeft, IconAlert } from '../lib/icons'
 
 export default function DocPage() {
   const { docId } = useParams()
+  const [searchParams] = useSearchParams()
+  const focusPid = searchParams.get('c') // 引用溯源带的父块锚，定位到具体切块
   const [doc, setDoc] = useState(null)
   const [error, setError] = useState('')
 
@@ -14,9 +16,28 @@ export default function DocPage() {
     setError('')
     api
       .getDocument(docId)
-      .then((d) => live && setDoc(d))
+      .then((d) => {
+        if (!live) return
+        setDoc(d)
+        // 带 ?c=parent_id 时，滚动并高亮对应切块
+        if (focusPid && d && d.chunks.some((c) => c.parent_id === focusPid)) {
+          setTimeout(() => {
+            const el = document.querySelector(`.chunk[data-pid="${focusPid}"]`)
+            if (!el) return
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            el.style.outline = '2px solid var(--brand-500)'
+            el.style.outlineOffset = '2px'
+            setTimeout(() => {
+              el.style.outline = ''
+              el.style.outlineOffset = ''
+            }, 1800)
+          }, 60)
+        }
+      })
       .catch((e) => live && setError(e.message))
     return () => { live = false }
+    // focusPid 只在跳转时生效，不参与重跑依赖
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId])
 
   if (error) {
@@ -61,7 +82,7 @@ export default function DocPage() {
       <div className="detail-section-title">切块列表（{doc.chunks.length}）</div>
       <div className="chunk-list">
         {doc.chunks.map((c, i) => (
-          <div key={c.id} className="chunk">
+          <div key={c.id} className="chunk" data-pid={c.parent_id}>
             <div className="chunk-no">{i + 1}</div>
             <div className="chunk-body">
               <div className="chunk-text">{c.text}</div>

@@ -15,6 +15,8 @@ from openai import OpenAI
 import time
 # 导入 UUID 库，生成唯一会话 ID
 import uuid
+# 导入 JSON 库，序列化/反序列化引用溯源 sources
+import json
 # 导入 pymysql 错误处理，用于数据库操作的异常捕获
 import pymysql
 class IntegratedQASystem:
@@ -72,9 +74,19 @@ class IntegratedQASystem:
                     question TEXT NOT NULL,
                     answer TEXT NOT NULL,
                     timestamp DATETIME NOT NULL,
+                    sources TEXT,   -- 引用溯源 JSON，刷新/切会话后不丢
                     INDEX idx_session_id (session_id)
                 )
             """)
+            # 老表补列（CREATE IF NOT EXISTS 不会改已存在的表，这里幂等 ALTER）
+            try:
+                self.mysql_client.cursor.execute(
+                    "ALTER TABLE conversations ADD COLUMN sources TEXT"
+                )
+                self.mysql_client.connection.commit()
+            except pymysql.MySQLError:
+                # 列已存在
+                self.mysql_client.connection.rollback()
             # 提交数据库事务
             self.mysql_client.connection.commit()
             # 记录表初始化成功的日志
@@ -117,14 +129,22 @@ class IntegratedQASystem:
         try:
             # 执行 SQL 查询，获取最近 5 轮对话
             self.mysql_client.cursor.execute("""
-                      SELECT question, answer
+                      SELECT question, answer, sources
                       FROM conversations
                       WHERE session_id = %s
                       ORDER BY timestamp DESC
                       LIMIT %s
                   """, (session_id, 5))
-            # 获取对话历史
-            history = [{"question": row[0], "answer": row[1]} for row in self.mysql_client.cursor.fetchall()]
+            # 获取对话历史，sources 为 JSON 字符串，解析为列表供前端引用溯源渲染
+            history = []
+            for row in self.mysql_client.cursor.fetchall():
+                sources = []
+                if row[2]:
+                    try:
+                        sources = json.loads(row[2])
+                    except (ValueError, TypeError):
+                        sources = []
+                history.append({"question": row[0], "answer": row[1], "sources": sources})
             # 反转结果，按时间正序返回
             return history[::-1]
 
@@ -167,14 +187,19 @@ class IntegratedQASystem:
             self.logger.error(f"列出会话失败: {e}")
             return []
 
-    def update_session_history(self, session_id: str, question: str, answer: str) -> list:
-        """更新会话历史到MySQL，保留最近5轮对话"""
+    def update_session_history(self, session_id: str, question: str, answer: str,
+                               sources: list = None) -> list:
+        """更新会话历史到MySQL，保留最近5轮对话。
+
+        sources 为引用溯源列表（可空），序列化为 JSON 落库，刷新/切会话后仍可恢复。
+        """
         try:
             # 插入新的对话记录
             self.mysql_client.cursor.execute("""
-                INSERT INTO conversations (session_id, question, answer, timestamp)
-                VALUES (%s, %s, %s, NOW())
-            """, (session_id, question, answer))
+                INSERT INTO conversations (session_id, question, answer, timestamp, sources)
+                VALUES (%s, %s, %s, NOW(), %s)
+            """, (session_id, question, answer,
+                  json.dumps(sources, ensure_ascii=False) if sources else None))
             # 获取更新后的对话历史
             history = self._fetch_recent_history(session_id)
             # 删除超出 5 轮的旧记录
@@ -322,14 +347,17 @@ class IntegratedQASystem:
         history = self.get_session_history(session_id) if session_id else []
         # 累积 token，结束后写历史
         collected = []
+        end_sources = []
         for token, is_complete, sources in _stream_from_compiled(
                 self.qa_graph, query, source_filter=source_filter, history=history):
             collected.append(token)
+            if sources:
+                end_sources = sources  # 引用溯源随结束帧到达，一并落库
             if is_complete:
-                # 流结束，更新对话历史
+                # 流结束，更新对话历史（含引用溯源）
                 answer = "".join(collected)
                 if session_id:
-                    self.update_session_history(session_id, query, answer)
+                    self.update_session_history(session_id, query, answer, end_sources)
                 processing_time = time.time() - start_time
                 self.logger.info(f"查询处理耗时 {processing_time:.2f}秒")
             yield token, is_complete, sources
