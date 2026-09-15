@@ -287,6 +287,18 @@ async def list_sessions():
     return {"sessions": qa_system.list_sessions()}
 
 
+# 创建"空壳"分类：磁盘建 {主题}_data/ 目录即可立住该主题，
+# _disk_sources() 据此发现它，刷新后不消失（Milvus 无数据也算空壳）。
+# 幂等：已存在返回 {exists: True}。
+@app.post("/api/kb/subjects")
+async def create_subject(payload: dict):
+    subject = _sanitize_subject(payload.get("name"))
+    path = os.path.join(DATA_ROOT, f"{subject}_data")
+    exist = os.path.isdir(path)
+    os.makedirs(path, exist_ok=True)
+    return {"subject": subject, "exists": exist}
+
+
 # 意图识别开关：读取当前状态（true=按通用/专业路由，false=一律走检索）
 @app.get("/api/settings/intent")
 async def get_intent_classify():

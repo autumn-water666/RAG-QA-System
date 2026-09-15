@@ -4,7 +4,7 @@ import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import {
   IconSearch, IconUpload, IconTrash, IconFolder,
-  IconCheck, IconClock, IconAlert,
+  IconPlus, IconCheck, IconClock, IconAlert,
 } from '../lib/icons'
 
 const ACCEPT = '.txt,.md,.pdf,.doc,.docx,.ppt,.pptx,.rtf,.epub,.csv,.xls,.xlsx'
@@ -17,8 +17,7 @@ function fmtTime(iso) {
 export default function KbPage() {
   const toast = useToast()
   const [sources, setSources] = useState([]) // 主题列表
-  const [activeKb, setActiveKb] = useState('') // 当前浏览主题
-  const [uploadSubject, setUploadSubject] = useState('') // 上传目标主题（可输入新建）
+  const [activeKb, setActiveKb] = useState('') // 当前浏览/上传目标主题
   const [keyword, setKeyword] = useState('') // 库内关键词过滤
   const [docList, setDocList] = useState([]) // 当前主题文档
   const [subjectCounts, setSubjectCounts] = useState({}) // 每个主题文档数
@@ -47,7 +46,6 @@ export default function KbPage() {
         toast(failed ? 'error' : 'success',
           failed ? `上传完成：成功 ${s.done}/${s.total}，失败 ${failed} 个` : `上传完成：${s.done} 个文件已入库`)
         if (!failed) {
-          setUploadSubject('')
           await loadSources()
           loadDocs(activeKb, keyword.trim())
         } else {
@@ -118,13 +116,26 @@ export default function KbPage() {
     setKeyword('')
   }
 
+  async function onCreateSubject() {
+    const name = (window.prompt('创建新分类：输入名称（支持中文/字母/数字）') || '').trim()
+    if (!name) return
+    try {
+      const { subject, exists } = await api.createSubject(name)
+      setActiveKb(subject)
+      await loadSources()
+      toast(exists ? 'info' : 'success', exists ? `分类「${subject}」已存在` : `已创建分类「${subject}」`)
+    } catch (e) {
+      toast.error(`创建分类失败：${e.message || e}`)
+    }
+  }
+
   async function onUploadFile(e) {
     const files = e.target.files ? Array.from(e.target.files) : []
     e.target.value = '' // 允许重复选同一文件
     if (!files.length) return
-    const target = (uploadSubject && uploadSubject.trim()) || activeKb
+    const target = activeKb
     if (!target) {
-      toast.error('请填写或选择上传主题后再上传')
+      toast.error('请先在上方选择或新建一个分类，再上传文档')
       return
     }
     stopPolling()
@@ -194,17 +205,9 @@ export default function KbPage() {
           />
         </div>
         <div className="spacer" />
-        <input
-          className="field upload-subject"
-          list="subject-suggest"
-          value={uploadSubject}
-          onChange={(e) => setUploadSubject(e.target.value)}
-          placeholder={activeKb ? `上传主题（如「${activeKb}」，可新建）` : '上传主题（可新建）'}
-          aria-label="上传所属主题"
-        />
-        <datalist id="subject-suggest">
-          {sources.map((s) => <option key={s} value={s} />)}
-        </datalist>
+        <button className="btn btn-ghost" onClick={onCreateSubject}>
+          <IconPlus /> 新建分类
+        </button>
         <button
           className="btn btn-primary"
           id="upload-btn"

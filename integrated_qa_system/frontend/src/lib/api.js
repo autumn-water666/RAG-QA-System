@@ -31,6 +31,12 @@ export const api = {
 
   // ---- 来源 ----
   getSources: async () => (await jfetch('/api/sources')).sources, // -> string[]
+  createSubject: async (name) =>
+    (await jfetch('/api/kb/subjects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })), // -> { subject, exists }
 
   // ---- 知识库 ----
   getDocuments: async (subject, q = '') => {
