@@ -26,6 +26,12 @@ from base import logger, Config
 
 conf = Config()
 
+# 单次嵌入请求的最大块数。远程免费模型(如 SiliconFlow bge-m3)有 TPM(每分钟 token) 上限，
+# 把超大文档(上万块)一次性塞进一个大请求必然撞桶,撞后只能无限重试同一个超限请求,永不完成。
+# 这里切成小块串行嵌入,让单批 token 落在配额内:慢,但能跑完。按你的账号 TPM 档位下调即可。
+# ponytail: 固定常量即可,若多账号不同配额再改成配置项。
+EMBED_BATCH = 1000
+
 
 class RemoteEmbeddings:
     """远程 OpenAI 兼容 /embeddings 嵌入（SiliconFlow 等，如 BAAI/bge-m3）。
@@ -41,9 +47,23 @@ class RemoteEmbeddings:
         self.dim = dim
 
     def __call__(self, texts):
-        import numpy as np
-        resp = self.client.embeddings.create(model=self.model, input=texts)
-        # 按输入顺序排好（OpenAI 返回 data 顺序稳定，仍按 index 排序更稳妥）
+        import numpy as np, time, random
+        resp = None
+        max_retries = 8
+        # SiliconFlow 的 bge-m3 有 TPM（每分钟 token）限流，撞桶即 429。
+        # 保留原始单次调用语义，仅额外对 429 做指数退避等待：等配额回填再发，
+        # 而非整单因一次限流直接失败。总等待上限 ~ 15s×0.5×(2^8) 足够覆盖多次回填。
+        for attempt in range(max_retries):
+            try:
+                resp = self.client.embeddings.create(model=self.model, input=texts)
+                break
+            except Exception as e:
+                if attempt == max_retries - 1 or getattr(e, 'status_code', 0) != 429:
+                    raise  # 耗尽重试或非限流错误，直接抛给上层
+                sleep = 15 * (2 ** attempt) * 0.5 + random.uniform(0, 2)
+                logger.warning(
+                    f"嵌入触发限流(429 TPM)，第 {attempt + 1}/{max_retries} 次重试，等待 {int(sleep)}s")
+                time.sleep(sleep)
         ordered = sorted(resp.data, key=lambda x: x.index)
         dense = np.array([d.embedding for d in ordered], dtype=np.float32)
         return {"dense": dense, "sparse": None}
@@ -197,67 +217,64 @@ class VectorStore:
     # 定义方法，向向量存储添加文档
     def add_documents(self, documents):
         # print(f'documents--》{documents[0]}')
-        # 提取所有文档的内容列表
         texts = [doc.page_content for doc in documents]
 
-        # 使用 BGE-M3 嵌入函数生成文档的嵌入
-        embeddings = self.embedding_function(texts)
-        # print(f'embeddings--》{embeddings}')
-        # print(f'embeddings--》{embeddings.keys()}')
-        # 初始化空列表，存储插入的数据
-        data = []
-        # 同一批次内重复块主键（相同内容哈希的重复块）Milvus 会拒绝：
-        # MilvusException code=1100 duplicate primary keys。重复内容块纯属冗余，
-        # 这里按 id 去重后再组成批次。
+        # 超大文件按 EMBED_BATCH 分批，串行“嵌入→拼装→upsert”。
+        # 一次全量嵌入(7923 块)会超出远程 TPM 上限、必然撞桶并无限重试同一个超限请求；
+        # 拆成单批恰好落在配额内的小块后,每批正常完成再进下一批,慢但能跑到底。
+        # 429 重试仍由 RemoteEmbeddings.__call__ 内部处理,只发生在单批范围内。
         seen_ids = set()
-        # 遍历每个文档，带上索引i
-        for i, doc in enumerate(documents):
-            # 生成文档内容的哈希值作为唯一的ID
-            text_hash = hashlib.md5(doc.page_content.encode('utf-8')).hexdigest()
-            if text_hash in seen_ids:
-                continue
-            seen_ids.add(text_hash)
-            # print(f'text_hash--》{text_hash}')
-            # print(f'text_hash--》{type(text_hash)}')
-            # 初始化一个稀疏向量的字典（Milvus要求存储稀疏向量的格式）
-            sparse_vector = {}
-            # 远程嵌入只出稠密向量（sparse 为 None），此时稀疏字段存空，检索端据此降级
-            if embeddings["sparse"] is not None:
-                # BGE-M3 的稀疏向量是 scipy csr_array（形状 n_docs x vocab）。
-                # 新版 scipy 的 csr_array 没有 .getrow() 方法，单行索引又会返回类型不稳定的
-                # coo_array，因此这里直接用 CSR 的 indptr/indices/data 三件套切出第 i 行，
-                # 兼容新旧版本 scipy。
-                sp_indices = embeddings["sparse"].indices
-                sp_indptr = embeddings["sparse"].indptr
-                sp_values = embeddings["sparse"].data
-                # 第 i 行的非零列下标位于 [indptr[i], indptr[i+1]) 区间
-                for pos in range(sp_indptr[i], sp_indptr[i + 1]):
-                    sparse_vector[sp_indices[pos]] = sp_values[pos]
-            # print(f'sparse_vector--》{sparse_vector}')
-            # print(f'sparse_vector--》{len(sparse_vector)}')
-            # print(embeddings["dense"][i])
-            # print(embeddings["dense"][i].shape)
-            # 创建数据字典，包含所有字段
-            data.append({
-                "id": text_hash,
-                "text": doc.page_content,
-                "dense_vector": embeddings["dense"][i],
-                "sparse_vector": sparse_vector,
-                "parent_id": doc.metadata["parent_id"],
-                "parent_content": doc.metadata["parent_content"],
-                "source": doc.metadata.get("source", "unknown"),
-                "doc_id": doc.metadata.get("doc_id", ""),
-                "title": doc.metadata.get("title", ""),
-                "file_path": doc.metadata.get("file_path", ""),
-                "timestamp": doc.metadata.get("timestamp", "unknown")
-            })
-        # 检查是否有数据需要插入
-        if data:
-            # 稀疏向量按 id 出现顺序收集在 data 里，此处无需重排（上面已同步跳过去重项）
-            # 使用 upsert 操作插入数据，覆盖重复 ID
-            self.client.upsert(collection_name=self.collection_name, data=data)
-            # 记录插入或更新的文档数量日志
-            logger.info(f"已插入或更新 {len(data)} 个文档")
+        inserted = 0
+        for start in range(0, len(texts), EMBED_BATCH):
+            batch_texts = texts[start:start + EMBED_BATCH]
+            batch_docs = documents[start:start + EMBED_BATCH]
+            # 使用 BGE-M3 嵌入函数生成该批文档的嵌入
+            embeddings = self.embedding_function(batch_texts)
+            # 初始化空列表，存储该批插入的数据
+            data = []
+            # 同一批次内重复块主键（相同内容哈希的重复块）Milvus 会拒绝：
+            # MilvusException code=1100 duplicate primary keys。重复内容块纯属冗余，
+            # 这里按 id 去重后再组成批次。批量上传多个文件时语义等同原来的全量去重。
+            for i, doc in enumerate(batch_docs):
+                # 生成文档内容的哈希值作为唯一的ID
+                text_hash = hashlib.md5(doc.page_content.encode('utf-8')).hexdigest()
+                if text_hash in seen_ids:
+                    continue
+                seen_ids.add(text_hash)
+                # 初始化一个稀疏向量的字典（Milvus要求存储稀疏向量的格式）
+                sparse_vector = {}
+                # 远程嵌入只出稠密向量（sparse 为 None），此时稀疏字段存空，检索端据此降级
+                if embeddings["sparse"] is not None:
+                    # BGE-M3 的稀疏向量是 scipy csr_array（形状 n_docs x vocab）。
+                    # 新版 scipy 的 csr_array 没有 .getrow() 方法，单行索引又会返回类型不稳定的
+                    # coo_array，因此这里直接用 CSR 的 indptr/indices/data 三件套切出第 i 行，
+                    # 兼容新旧版本 scipy。i 是相对本批的下标，与 batch_texts/batch_docs 一一对应。
+                    sp_indices = embeddings["sparse"].indices
+                    sp_indptr = embeddings["sparse"].indptr
+                    sp_values = embeddings["sparse"].data
+                    for pos in range(sp_indptr[i], sp_indptr[i + 1]):
+                        sparse_vector[sp_indices[pos]] = sp_values[pos]
+                # 创建数据字典，包含所有字段
+                data.append({
+                    "id": text_hash,
+                    "text": doc.page_content,
+                    "dense_vector": embeddings["dense"][i],
+                    "sparse_vector": sparse_vector,
+                    "parent_id": doc.metadata["parent_id"],
+                    "parent_content": doc.metadata["parent_content"],
+                    "source": doc.metadata.get("source", "unknown"),
+                    "doc_id": doc.metadata.get("doc_id", ""),
+                    "title": doc.metadata.get("title", ""),
+                    "file_path": doc.metadata.get("file_path", ""),
+                    "timestamp": doc.metadata.get("timestamp", "unknown")
+                })
+            # 该批有数据则 upsert
+            if data:
+                self.client.upsert(collection_name=self.collection_name, data=data)
+                inserted += len(data)
+                logger.info(f"已插入或更新 {inserted}/{len(documents)} 个文档（本批 {len(data)}）")
+        if inserted:
+            logger.info(f"文档入库完成，共 {inserted} 个去重块")
 
     # 定义方法，执行混合检索并重排序
     def hybrid_search_with_rerank(self, query, k=conf.RETRIEVAL_K, source_filter=None) -> list[dict]:

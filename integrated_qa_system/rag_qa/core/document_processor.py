@@ -22,6 +22,19 @@ from datetime import datetime
 import sys
 from langchain_core.documents import Document
 
+# 繁体→简体转换器（opencc, t2s）。用于把繁体文档统一转成简体再切块/入库,
+# 保证简体提问对繁体库语义评分不打折、关键词匹配也能字面命中。
+# 未安装时优雅降级为不变换（不影响切块流程）。
+try:
+    import opencc
+    _t2s = opencc.OpenCC('t2s')
+except Exception:
+    _t2s = None
+
+def _to_simplified(text):
+    """text 繁体转简体；opencc 缺失或无文本时原样返回。"""
+    return _t2s.convert(text) if (_t2s and text) else (text or "")
+
 # 路径设置：将 rag_qa 和项目根目录加入 sys.path，确保模块导入正常
 current_dir = os.path.dirname(os.path.abspath(__file__))  # core/ 目录
 rag_qa_path = os.path.dirname(current_dir)                # rag_qa/ 目录
@@ -37,9 +50,8 @@ conf = Config()
 # ============================================================
 # 文件类型 → Loader 映射表
 # ============================================================
-# .txt 和 .md 是纯文本，直接用 TextLoader 读取即可。
-# 其余 20+ 种格式全部交给 AnyDocLoader，由 anydoc 库
-# 根据文件内容自动检测格式并转换为 Markdown。
+# .txt 和 .md 是纯文本，用 TextLoader 读取（编码按内容探测，见 _guess_text_encoding）。
+# 其余 20+ 种格式全部交给 AnyDocLoader，由 anydoc 库根据文件内容自动检测格式并转换为 Markdown。
 document_loaders = {
     ".txt": TextLoader,
     ".md": TextLoader,
@@ -65,6 +77,23 @@ document_loaders = {
     ".xlsm": AnyDocLoader,   # Excel 宏文档
     ".xlsb": AnyDocLoader,   # Excel 二进制格式
 }
+
+
+def _guess_text_encoding(file_path) -> str:
+    """探测 .txt/.md 的真实编码：先试 UTF-8，失败再退回 GB18030。
+
+    Windows 上 TextLoader 默认落到系统编码（GBK），而部分下载的中文小说是
+    GBK/GB18030 编码；写死 UTF-8 又会解码失败。按内容探测最稳。
+    """
+    with open(file_path, "rb") as f:
+        raw = f.read()  # 读全文（TextLoader 反正也要全读），避免截断把多字节字符切半。
+    for enc in ("utf-8", "gb18030"):
+        try:
+            raw.decode(enc)
+            return enc
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return "utf-8"  # 都不行也退回 UTF-8（喂给 TextLoader 自行处理）
 
 
 def load_documents_from_directory(directory_path) -> list[Document]:
@@ -98,11 +127,10 @@ def load_documents_from_directory(directory_path) -> list[Document]:
             if file_extension in supported_extensions:
                 try:
                     loader_class = document_loaders[file_extension]
-                    # .txt 和 .md 是纯文本，须显式指定 UTF-8 编码。
-                    # 否则 TextLoader 自动检测会落到系统默认编码（Windows 下是 GBK），
-                    # 遇到 UTF-8 编码的中文文件会抛 UnicodeDecodeError。
+                    # .txt/.md 是纯文本，按内容探测编码（utf-8 → gb18030），
+                    # 不写死，避免非 UTF-8 中文文件抛解码错误；其余交给 AnyDocLoader。
                     if file_extension in (".txt", ".md"):
-                        loader = loader_class(file_path, encoding="utf-8")
+                        loader = loader_class(file_path, encoding=_guess_text_encoding(file_path))
                     else:
                         loader = loader_class(file_path)
 
@@ -145,6 +173,9 @@ def _split_single_document(doc, doc_index, parent_chunk_size=conf.PARENT_CHUNK_S
     Returns:
         该文档的所有子块（带 parent_id/parent_content/id 元数据）。
     """
+    # 繁体文档先统一转简体，保证后续所有子块/父块/全文都是简体，
+    # 简体提问才能稳定检索与字面命中（本方法是两条切分路径的唯一汇合点）。
+    doc.page_content = _to_simplified(doc.page_content)
     file_extension = os.path.splitext(doc.metadata.get("file_path", ""))[1].lower()
     is_markdown = (file_extension == ".md")
     parent_splitter = ChineseRecursiveTextSplitter(
@@ -202,10 +233,10 @@ def process_file(file_path: str, source: str,
     file_extension = os.path.splitext(file_path)[1].lower()
     if file_extension not in document_loaders:
         raise ValueError(f"不支持的文件类型: {file_extension}")
-    # 与 load_documents_from_directory 保持一致：.txt/.md 显式 UTF-8，
+    # 与 load_documents_from_directory 保持一致：.txt/.md 按内容探测编码，
     # 其余交给 AnyDocLoader 自动识别
     if file_extension in (".txt", ".md"):
-        loader = document_loaders[file_extension](file_path, encoding="utf-8")
+        loader = document_loaders[file_extension](file_path, encoding=_guess_text_encoding(file_path))
     else:
         loader = document_loaders[file_extension](file_path)
 
