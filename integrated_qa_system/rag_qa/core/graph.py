@@ -56,6 +56,7 @@ class QState(TypedDict):
     strategy: Optional[str]                # 检索策略名（analyze 阶段选出）
     context_docs: List                     # 检索到的父文档
     answer: str                            # 最终答案
+    fallback_retried: bool                 # 是否已因仲裁拒答回退过一次 RAG（防死循环）
 
 
 def _history_context(history):
@@ -123,6 +124,10 @@ def build_qa_graph(rag_system, bm25_search=None):
     def retrieve(state):
         # BM25 未命中才走到此处；用 analyze 解析出的规范查询 + 预设策略检索，
         # 不再重复调用 LLM 选策略（retrieve_and_merge 收到 strategy 就不会再选）。
+        # 若是「仲裁拒答」回退而来：清掉 bm25_answer，generate 才会落入 RAG 上下文分支，
+        # 而非再次被 BM25 证据命中；同时置 fallback_retried 标记，防止无限回退。
+        state["bm25_answer"] = None
+        state["fallback_retried"] = True
         query = state.get("search_query") or state["query"]
         src_filter = state["source_filter"]
         strategy = state.get("strategy") or "直接检索"
@@ -192,6 +197,22 @@ def build_qa_graph(rag_system, bm25_search=None):
             return "generate"
         return "retrieve" if state.get("need_rag", True) else "set_not_found"
 
+    # 拒答启发式：探测 generate 产出的 answer 是否属于"没给出有效回答"。
+    # ponytail：关键词匹配足够覆盖文案口径（NOT_FOUND / 明确拒答），
+    # 无法断言语义级拒答；若误判率上升，再换成只对"空串/未找到答案"精确匹配。
+    def _is_refusal(answer):
+        return not answer or answer.strip() == NOT_FOUND_ANSWER or any(
+            k in answer for k in ("无法回答", "未找到答案", "无法确定", "暂无法")
+        )
+
+    def route_after_generate(state):
+        # 仲裁拒答且尚未回退过 RAG → 回 retrieve 用向量检索补齐覆盖；
+        # 否则结束。第一次回退靠 retrieve 置 fallback_retried，第二次不会再进。
+        if _is_refusal(state.get("answer")) and not state.get("fallback_retried", False):
+            logger.info("[graph] 仲裁拒答，回退 RAG 检索补齐覆盖")
+            return "retrieve"
+        return "end"
+
     # ---- 组图 ----
     # 意图识别开关：conf.USE_INTENT_CLASSIFY=True 走"通用知识/专业咨询" classify 路由；
     # 为 False 则不注册 classify 节点，但仍保留 analyze 问题解析（规范化口语化查询 +
@@ -222,7 +243,12 @@ def build_qa_graph(rag_system, bm25_search=None):
          "set_not_found": "set_not_found"}
     )
     graph.add_edge("retrieve", "generate")
-    graph.add_edge("generate", END)
+    # 仲裁拒答回退：generate 判定"没回答上"且未重试 → 回 retrieve 用向量检索补齐；
+    # 已回退过（fallback_retried）或回答有效 → 结束。断链已接上。
+    graph.add_conditional_edges(
+        "generate", route_after_generate,
+        {"retrieve": "retrieve", "end": END}
+    )
     graph.add_edge("set_not_found", END)
 
     return graph.compile()

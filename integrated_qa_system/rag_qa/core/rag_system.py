@@ -106,23 +106,6 @@ class RAGSystem:
             logger.error(f"子查询策略执行失败: {e}")
             return []
 
-    #   定义私有方法，使用回溯问题进行检索
-    def _retrieve_with_backtracking(self, query, source_filter=None):
-        logger.info(f"使用回溯问题策略进行检索 (查询: '{query}')")
-        #   获取回溯问题生成的 Prompt 模板
-        backtrack_prompt_template = RAGPrompts.backtracking_prompt() # 使用 template 后缀区分
-        try:
-            #   调用大语言模型生成回溯问题
-            simplified_query = self._call_llm_text(backtrack_prompt_template.format(query=query)).strip()
-            logger.info(f"生成的回溯问题: '{simplified_query}'")
-            #   使用回溯问题进行检索，并返回检索结果
-            return self.vector_store.hybrid_search_with_rerank(
-                simplified_query, k=conf.RETRIEVAL_K ,source_filter=source_filter
-            )
-        except Exception as e:
-            logger.error(f"回溯问题策略执行失败: {e}")
-            return []
-
     #   定义方法，检索并合并相关文档
     def retrieve_and_merge(self, query, source_filter=None, strategy=None):  #   新增 strategy 参数
         #   如果未指定检索策略，则使用策略选择器选择
@@ -131,9 +114,10 @@ class RAGSystem:
 
         #   根据检索策略选择不同的检索方式
         ranked_sub_chunks = [] # 初始化
-        if strategy == "回溯问题检索":
-            ranked_sub_chunks = self._retrieve_with_backtracking(query, source_filter=source_filter)
-        elif strategy == "子查询检索":
+        # （回溯问题检索已移除：其职责——把口语化/复杂问题规范成干净查询——已由
+        #   LangGraph analyze 阶段统一产出 search_query 承担，策略内部再生成回溯问题
+        #   属于重复规范化。select_strategy 若仍返回该串，会回落到下方直接检索分支。）
+        if strategy == "子查询检索":
             ranked_sub_chunks = self._retrieve_with_subqueries(query, source_filter=source_filter) # 返回的是唯一文档列表
              # 注意：子查询返回的是已 rerank 过的父文档或子块列表，后续合并逻辑可能需要调整
              # 当前实现中，子查询返回的是初步检索（可能已rerank）的块，再进行合并

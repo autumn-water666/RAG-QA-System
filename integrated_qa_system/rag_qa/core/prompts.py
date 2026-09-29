@@ -80,17 +80,3 @@ class RAGPrompts:
             #   定义输入变量
             input_variables=["query"],
         )
-
-    #   定义回溯问题生成的 Prompt 模板
-    @staticmethod
-    def backtracking_prompt():
-        #   创建并返回 PromptTemplate 对象
-        return PromptTemplate(
-            template="""  
-            将以下复杂查询简化为一个更简单的问题：  
-            查询: {query}  
-            简化问题:  
-            """,
-            #   定义输入变量
-            input_variables=["query"],
-        )
